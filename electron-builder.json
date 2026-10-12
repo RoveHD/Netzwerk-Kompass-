@@ -1,0 +1,45 @@
+{
+  "appId": "de.rovehd.netzwerkkompass",
+  "productName": "Netzwerk-Kompass",
+  "electronVersion": "44.3.0",
+  "electronDist": "runtime/electron",
+  "asar": false,
+  "npmRebuild": false,
+  "directories": { "output": "release" },
+  "files": [
+    "package.json", "server.js", "README.md",
+    "desktop/*.cjs", "lib/*.js",
+    "public/*.js", "public/*.css", "public/index.html",
+    "public/brand/*.png", "public/brand/*.ico", "public/brand/README.md",
+    "public/fonts/*.woff2", "public/fonts/*.txt", "public/fonts/README.md",
+    "scripts/probe.ps1", "scripts/games.ps1", "scripts/game-packets.ps1",
+    "scripts/game-packets.cs", "scripts/lag-hotkey.ps1", "scripts/lag-hotkey.cs"
+  ],
+  "extraResources": [
+    { "from": "runtime/node.exe", "to": "runtime/node.exe" },
+    { "from": "runtime/NODE-LICENSE.txt", "to": "runtime/NODE-LICENSE.txt" },
+    { "from": "runtime/NODE-VERSION.txt", "to": "runtime/NODE-VERSION.txt" }
+  ],
+  "electronLanguages": ["de", "en-US"],
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "icon": "public/brand/compass.ico",
+    "artifactName": "Netzwerk-Kompass-Setup-${version}-${arch}.${ext}",
+    "executableName": "Netzwerk-Kompass"
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "allowElevation": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": false,
+    "include": "scripts/installer.nsh"
+  },
+  "publish": [{
+    "provider": "github",
+    "owner": "RoveHD",
+    "repo": "Netzwerk-Kompass-",
+    "releaseType": "release"
+  }]
+}

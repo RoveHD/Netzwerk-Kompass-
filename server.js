@@ -146,7 +146,7 @@ export async function main() {
   const shutdown=async(reason='normal')=>{
     if(stopping)return;stopping=true;
     detachLauncher();
-    const hard=setTimeout(()=>process.exit(0),12000);hard.unref();
+    const hard=setTimeout(()=>process.exit(1),12000);hard.unref();
     server.close();server.closeIdleConnections();
     await server.closeGameCapture();
     await monitor.prepareClose({reason});await analysis.close();await monitor.close({reason});process.exit(0);

@@ -2,11 +2,22 @@
 
 Ein lokales Diagnoseprogramm für Windows 10/11: Geräte im Heimnetz suchen, Router und Internet getrennt beobachten und sporadische Störungen protokollieren. Die lokale Messung benötigt weder Konto noch npm-Pakete oder Änderungen am Router. Eine zusätzliche Codex-Auswertung ist optional.
 
+## Windows-Download und Updates
+
+Die fertigen Downloads findest du bei [GitHub Releases](https://github.com/RoveHD/Netzwerk-Kompass-/releases/latest).
+
+- **Installer:** `Netzwerk-Kompass-Setup-VERSION-x64.exe` einmal installieren. Neue stabile Versionen werden ohne Dialog im Hintergrund von GitHub geladen. Ist das Update beim Start bereits fertig, wird es still vor Messbeginn installiert und die App neu gestartet. Dauert der Download länger, startet die vorhandene Version; das Update wird dann nach dem Speichern beim Beenden installiert. Während der Nutzung wird alle vier Stunden erneut geprüft.
+- **Portable:** `Netzwerk-Kompass-Portable-VERSION-x64.exe` direkt starten. Diese Variante bleibt portabel und wird manuell durch Ersetzen der beendeten EXE aktualisiert.
+
+Die installierte App speichert Messungen und Einstellungen unter `%APPDATA%\Netzwerk-Kompass`. Portable speichert in `Netzwerk-Kompass-Daten` neben der EXE. Updates und die Deinstallation löschen keine Messdaten. Um von Portable zum Installer zu wechseln, beide Apps beenden und den Inhalt des portablen Datenordners in den noch leeren AppData-Ordner kopieren; bestehende Daten nicht überschreiben.
+
+Die Builds sind nicht mit einem Windows-Code-Signing-Zertifikat signiert. `SHA256SUMS.txt` enthält die Prüfsummen; `latest.yml` und `.blockmap` dienen dem Updater. Der Installer benötigt keinen GitHub-Account und enthält keinen Zugriffstoken.
+
 ## Starten
 
 Die Zielanzeige unterscheidet **Erreichbar**, **Auffällig**, **Kritisch** (rot) und **Keine Ping-Antwort**. Für die Einstufung zählen die letzten 30 gültigen Ping-Messungen: Ein Durchschnitt bis einschließlich 30 ms gilt für alle Ziele als unauffällig; darüber wird die Latenz auffällig. „Kritisch“ gilt ab 10 % fehlenden Antworten (mindestens fünf Messungen) oder einer mittleren Latenz ab 100 ms bei Router/Repeater/lokalen Geräten bzw. 300 ms bei Internet- und eigenen Zielen. Paketverlust und drei fehlende Antworten in Folge werden unabhängig von der Latenz angezeigt. Lokale Messfehler zählen nicht als Verlust. Diese Schwellen sind Diagnosehinweise, kein sicherer Nachweis eines Geräte- oder Internetausfalls.
 
-**Portable Desktop-EXE für Windows 10/11 (64 Bit):** `Netzwerk-Kompass-Desktop.exe` in einen beschreibbaren Ordner legen und doppelklicken. Die App öffnet ihr eigenes Programmfenster mit Minimieren, Maximieren und Schließen. Node.js und die Electron-Laufzeit sind enthalten; eine Installation oder Administratorrechte sind nicht erforderlich. Verlauf und Einstellungen liegen dauerhaft im Ordner **Netzwerk-Kompass-Daten neben der EXE**. Beim Verschieben auf einen anderen PC diesen Datenordner mitnehmen, wenn die Messungen erhalten bleiben sollen. Die Laufzeiten werden für die Sitzung in einen eigenen temporären Ordner entpackt und beim normalen Beenden wieder entfernt.
+**Portable Desktop-EXE für Windows 10/11 (64 Bit):** `Netzwerk-Kompass-Portable-VERSION-x64.exe` in einen beschreibbaren Ordner legen und doppelklicken. Die App öffnet ihr eigenes Programmfenster mit Minimieren, Maximieren und Schließen. Node.js und die Electron-Laufzeit sind enthalten; eine Installation oder Administratorrechte sind nicht erforderlich. Verlauf und Einstellungen liegen dauerhaft im Ordner **Netzwerk-Kompass-Daten neben der EXE**. Beim Verschieben auf einen anderen PC diesen Datenordner mitnehmen, wenn die Messungen erhalten bleiben sollen. Die Laufzeiten werden für die Sitzung in einen eigenen temporären Ordner entpackt und beim normalen Beenden wieder entfernt.
 
 Die EXE läuft ohne Browser- oder Konsolenfenster. Über das Symbol im Windows-Infobereich lässt sich das Programmfenster wieder in den Vordergrund holen. **Schließen (×)** am Programmfenster, **Beenden** in der Oberfläche oder im Infobereich beendet die gesamte App einschließlich der Messung. Je Datenordner kann eine EXE-Instanz laufen. Ein durch Absturz übrig gebliebener temporärer Laufzeitordner enthält keine dort gespeicherten Messprotokolle. Die internen Profildaten der Desktop-Oberfläche liegen unter `Netzwerk-Kompass-Daten/.desktop`. Ein Browser wird nur für ausdrücklich gewählte externe Hilfe oder die optionale Codex-Anmeldung benötigt.
 
@@ -26,7 +37,7 @@ Im **Ping-Diagramm** zoomen Mausrad oder **+ / −** in die Zeitachse. Ziehen od
 
 Die **Übersicht** fasst alle aktiven Messziele zusammen und zeigt Speicher- oder Messfehler direkt oben. Die Internet-Kachel berücksichtigt beide Internetziele; bei abweichenden Ergebnissen wird das auffällige Ziel genannt. Paketverlust zeigt den höchsten gemessenen Verlust der aktiven Internetziele (ohne Internetziel den Router), keine Summe. Pausierte Messungen werden ausdrücklich als pausiert angezeigt. Über **Messziele ansehen** und **Alle Ziele im Verlauf vergleichen** gelangst du direkt zu den Details. Die kompakte Übersicht zeigt Statusring, Messkarten, Latenz, PC-Datenverkehr und zuletzt erfasste Messungen; sie verwendet ausschließlich vorhandene Messdaten.
 
-Unter **Einstellungen** ist **Mit Windows starten** standardmäßig angehakt. Beim ersten normalen EXE-Start wird ein Autostarteintrag für den aktuellen Windows-Benutzer eingerichtet; die App startet dann bei dessen Anmeldung. Der Haken schaltet ihn wieder aus. Der Eintrag zeigt auf die portable EXE: Nach dem Verschieben die EXE einmal am neuen Ort starten. Quellcode- und versteckte Testläufe ändern den Windows-Autostart nicht.
+Unter **Einstellungen** ist **Mit Windows starten** standardmäßig angehakt. Beim ersten normalen EXE-Start wird ein Autostarteintrag für den aktuellen Windows-Benutzer eingerichtet; die App startet dann bei dessen Anmeldung. Der Haken schaltet ihn wieder aus. Der Eintrag zeigt auf die jeweils gestartete EXE; nach dem Verschieben der portablen EXE diese einmal am neuen Ort starten. Quellcode- und versteckte Testläufe ändern den Windows-Autostart nicht.
 
 Mehrere Geräte können gleichzeitig **Als Repeater** markiert werden. Unter **Repeater am PC** wird zusätzlich ausgewählt, an welchem der PC tatsächlich angeschlossen ist. Die anderen Repeater bleiben eigene Vergleichsziele; aus ihrer Reihenfolge wird keine Mesh-Kette abgeleitet.
 
@@ -154,3 +165,11 @@ Für die einzelne EXE zuerst `powershell -NoProfile -File scripts/build-portable
 Die Windows-Messungen verwenden PowerShell 5.1 und .NET. PowerShells Ausführungsrichtlinie wird nur für den gestarteten Prozess gesetzt; keine dauerhafte Systemänderung. Manche Informationen können in eingeschränkten Umgebungen nicht gelesen werden; die Oberfläche zeigt diese Grenzen.
 
 Speedtest-Endpunkte: [offizielle Cloudflare-Dokumentation](https://github.com/cloudflare/speedtest). Die App verwendet einen eigenen begrenzten Transfer-Test, nicht die vollständige Cloudflare-Messengine.
+
+## Installer und GitHub-Release bauen
+
+Auf Windows mit Node.js und PowerShell 7: `npm ci`, `npm run check`, `npm test`, danach `npm run build:release`. Die festgelegten Node- und Electron-Laufzeiten werden mit den offiziellen SHA256-Prüfsummen vorbereitet; NSIS und electron-builder erzeugen den Installer. Unter `release/` liegen portable EXE, Setup-EXE, Blockmap, `latest.yml` und `SHA256SUMS.txt`. Die Dateiliste schließt lokale Messdaten, Backups und Testausgaben aus.
+
+`npm run test:installed` und `npm run test:portable` starten die echten Pakete mit isolierten Daten, ohne Windows-Autostart und ohne automatische Updates des Testlaufs. Sie prüfen Fensterstart, native Helfer, Speicherung, Neustart und sauberes Beenden. Der installierte Build enthält dieselbe lokale Messlogik wie Portable; Quellstart und Portable benötigen weiterhin keine npm-Abhängigkeiten.
+
+Für Folgeversionen `package.json` erhöhen, `npm install --package-lock-only` ausführen und Änderungen committen. Ein Push des passenden Tags, zum Beispiel `v1.1.1`, startet `.github/workflows/release.yml`: Tests, beide Builds, Paket-Smokes und erst danach Veröffentlichung der fünf Release-Dateien. Der Versionswert der Messoberfläche kommt aus derselben `package.json`. Bereits veröffentlichte Release-Dateien werden nicht überschrieben. Automatische Updates verwenden den öffentlichen stabilen GitHub-Kanal über [electron-updater](https://www.electron.build/v26/docs/features/auto-update/).

@@ -6,7 +6,9 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-const sourceExecutable=process.argv[2]?path.resolve(process.argv[2]):path.join(root,'dist','Netzwerk-Kompass-Desktop.exe');
+const {version}=JSON.parse(await readFile(path.join(root,'package.json'),'utf8'));
+const sourceExecutable=process.argv[2]?path.resolve(process.argv[2]):path.join(root,'release',`Netzwerk-Kompass-Portable-${version}-x64.exe`);
+await (await import('node:fs/promises')).mkdir(path.join(root,'test-artifacts'),{recursive:true});
 const location=await mkdtemp(path.join(root,'test-artifacts','EXE Test ä '));
 const executable=path.join(location,'Netzwerk-Kompass.exe');
 await copyFile(sourceExecutable,executable);
@@ -58,7 +60,7 @@ let app;
 try {
   app=await start();
   const firstState=await(await fetch(app.url+'/api/state')).json();
-  assert.equal(firstState.version,'1.0.4');
+  assert.equal(firstState.version,version);
   assert.equal(firstState.persistence.enabled,true);
   assert.equal(firstState.gamePackets.durationMs,0,'game tracking has no default time limit');
   const startup=await(await fetch(app.url+'/api/startup')).json();
@@ -93,7 +95,7 @@ try {
   }
   assert.equal((await fetch(app.url+'/api/analysis/report?hours=1')).status,200);
   await stop(app);app=null;
-  const result={version:'1.0.4',portableSingleFile:true,desktopWindowLoaded:true,spacesAndUmlauts:true,nodeEnvironmentCleared:true,windowsAdapters:firstState.network.interfaces.length,persistence:true,resetPreserved:true,sessionRestart:true,autostartDefault:true,realAutostartUntouched:true,cleanShutdown:true,tempCleanup:true,lagFeatureAssets:true,nativeHelpersPackaged:true,location};
+  const result={version,portableSingleFile:true,desktopWindowLoaded:true,spacesAndUmlauts:true,nodeEnvironmentCleared:true,windowsAdapters:firstState.network.interfaces.length,persistence:true,resetPreserved:true,sessionRestart:true,autostartDefault:true,realAutostartUntouched:true,cleanShutdown:true,tempCleanup:true,lagFeatureAssets:true,nativeHelpersPackaged:true,location};
   await writeFile(path.join(location,'verification.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result,null,2));
 } finally { if(app&&app.child.exitCode===null)app.child.kill(); }

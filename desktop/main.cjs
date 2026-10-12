@@ -5,6 +5,17 @@ const net = require('node:net');
 const { HELP_URL, HELP_CHANNEL, configuration, isAppNavigation, isAppResource, isExportDownload, isHelpUrl, controlPipePath, attachLauncher } = require('./policy.cjs');
 const { GET_CHANNEL, SET_CHANNEL, CAPTURE_CHANNEL, MARK_EVENT, SELECT_EVENT, STATUS_EVENT, createLagHotkey } = require('./lag-hotkey.cjs');
 
+function configurePersistence(desktopDir) {
+  app.setName('Netzwerk-Kompass');
+  for (const [name, folder] of Object.entries({ userData: 'profile', sessionData: 'session', logs: 'logs', crashDumps: 'crashes' })) {
+    const location = path.join(desktopDir, folder);
+    fs.mkdirSync(location, { recursive: true });
+    app.setPath(name, location);
+  }
+  app.commandLine.appendSwitch('disk-cache-dir', path.join(desktopDir, 'session', 'Cache'));
+}
+
+function startDesktop({ managed = false, persistenceConfigured = false, onShutdown = () => app.quit(), onFatal = error => app.exit(1), onReady = () => {} } = {}) {
 let window = null;
 let stopping = false;
 let failed = false;
@@ -18,6 +29,7 @@ function fail(error) {
   if (stopping || failed) return;
   failed = true;
   lagHotkey?.close();
+  if (managed) { onFatal(error); return; }
   const message = `DESKTOP_ERROR ${String(error?.message || error).replace(/[\r\n]+/g, ' ')}\n`;
   process.stderr.write(message);
   detachLauncher();
@@ -28,7 +40,8 @@ function fail(error) {
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  app.quit();
+  if (managed) onShutdown();
+  else app.quit();
 }
 
 function showWindow() {
@@ -46,21 +59,15 @@ process.on('unhandledRejection', fail);
 try {
   const config = configuration();
   // Set every Chromium persistence path before Electron creates a session.
-  app.setName('Netzwerk-Kompass');
-  for (const [name, folder] of Object.entries({ userData: 'profile', sessionData: 'session', logs: 'logs', crashDumps: 'crashes' })) {
-    const location = path.join(config.desktopDir, folder);
-    fs.mkdirSync(location, { recursive: true });
-    app.setPath(name, location);
-  }
-  app.commandLine.appendSwitch('disk-cache-dir', path.join(config.desktopDir, 'session', 'Cache'));
+  if (!persistenceConfigured) configurePersistence(config.desktopDir);
   // Windows GUI processes can lose redirected standard handles while attaching
   // a console. The packaged launcher supplies a private duplex named pipe.
-  if (process.env.NETZWERK_KOMPASS_CONTROL_PIPE !== undefined) {
+  if (!managed && process.env.NETZWERK_KOMPASS_CONTROL_PIPE !== undefined) {
     control = net.createConnection(controlPipePath(process.env.NETZWERK_KOMPASS_CONTROL_PIPE));
     control.once('connect', () => { controlConnected = true; });
     control.on('error', fail);
     detachLauncher = attachLauncher(control, { show: showWindow, shutdown });
-  } else {
+  } else if (!managed) {
     detachLauncher = attachLauncher(process.stdin, { show: showWindow, shutdown });
   }
 
@@ -133,6 +140,7 @@ try {
       if (!stopping && !failed) {
         ready = true;
         process.stdout.write('DESKTOP_READY\n');
+        onReady();
         if (control && !control.destroyed) control.write('DESKTOP_READY\n');
       }
     });
@@ -152,7 +160,24 @@ try {
       if (!trustedMainFrame(event)) return { capturing: false, error: 'Anfrage nicht erlaubt.' };
       return lagHotkey.capture(active);
     });
+    if (managed) {
+      window.on('close', event => { if (!stopping) { event.preventDefault(); onShutdown(); } });
+      window.on('query-session-end', () => onShutdown(true));
+    }
     window.on('closed', () => { window = null; shutdown(); });
     await window.loadURL(config.startUrl);
   }).catch(fail);
 } catch (error) { fail(error); }
+
+  return {
+    show: showWindow,
+    stop() { stopping = true; detachLauncher(); lagHotkey?.close(); },
+    get window() { return window; }
+  };
+}
+
+module.exports = { startDesktop, configurePersistence };
+// Electron's default_app imports a CLI script, so require.main is not set.
+// A packaged installed.cjs import must not start a second desktop window.
+const directElectronScript = process.defaultApp === true && process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename);
+if (require.main === module || directElectronScript) startDesktop();

@@ -1,6 +1,7 @@
 data/
 Netzwerk-Kompass-Daten/
 dist/
+release/
 runtime/
 node_modules/
 test-artifacts/

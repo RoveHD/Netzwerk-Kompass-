@@ -1,0 +1,65 @@
+name: Windows Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+      - name: Release-Version pruefen
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF -ne "refs/tags/v$version") { throw 'Release nur vom passenden Versionstag starten.' }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - run: npm run build:release
+      - run: npm run test:installer
+      - run: npm run test:portable
+      - name: Gepruefte Ausgaben sichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Release
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: GitHub Release veroeffentlichen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          $files = @(
+            "release/Netzwerk-Kompass-Portable-$version-x64.exe",
+            "release/Netzwerk-Kompass-Setup-$version-x64.exe",
+            "release/Netzwerk-Kompass-Setup-$version-x64.exe.blockmap",
+            'release/latest.yml',
+            'release/SHA256SUMS.txt'
+          )
+          $notes = "docs/releases/$tag.md"
+          $notesArgs = if (Test-Path -LiteralPath $notes) { @('--notes-file', $notes) } else { @('--generate-notes') }
+          gh release create $tag @files --verify-tag --draft --title "Netzwerk-Kompass $version" @notesArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Release konnte nicht vollstaendig vorbereitet werden; vorhandene Releases werden nicht ueberschrieben.' }
+          gh release edit $tag --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release bleibt als Entwurf erhalten.' }
