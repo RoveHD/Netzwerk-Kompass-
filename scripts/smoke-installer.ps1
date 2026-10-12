@@ -5,7 +5,7 @@ $version = (Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | Con
 $target = [IO.Path]::GetFullPath((Join-Path $root 'test-artifacts\nsis-install'))
 if (-not $target.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe installer test directory.' }
 $uninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
-$existing = @(Get-ChildItem $uninstallRoot | Get-ItemProperty | Where-Object DisplayName -like 'Netzwerk-Kompass*')
+$existing = @(if (Test-Path -LiteralPath $uninstallRoot) { Get-ChildItem -LiteralPath $uninstallRoot | Get-ItemProperty | Where-Object DisplayName -like 'Netzwerk-Kompass*' })
 if ($existing.Count) { throw 'Existing installation detected; refusing to replace it.' }
 $links = @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Netzwerk-Kompass.lnk'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'Netzwerk-Kompass.lnk'))
 foreach ($link in $links) { if (Test-Path -LiteralPath $link) { throw 'Existing shortcut detected; refusing to replace it.' } }
@@ -35,7 +35,7 @@ try {
     if ($installed) {
         $process = Start-Process -FilePath $uninstaller -ArgumentList @('/S', ('_?=' + $target)) -WindowStyle Hidden -Wait -PassThru
         if ($process.ExitCode -ne 0 -or (Test-Path -LiteralPath $exe)) { throw 'NSIS uninstall failed.' }
-        $remaining = @(Get-ChildItem $uninstallRoot | Get-ItemProperty | Where-Object DisplayName -like 'Netzwerk-Kompass*')
+        $remaining = @(if (Test-Path -LiteralPath $uninstallRoot) { Get-ChildItem -LiteralPath $uninstallRoot | Get-ItemProperty | Where-Object DisplayName -like 'Netzwerk-Kompass*' })
         if ($remaining.Count) { throw 'Windows uninstall entry remained.' }
         if (-not (Test-Path -LiteralPath $marker)) { throw 'Uninstaller deleted user data.' }
         foreach ($link in $links) { if (Test-Path -LiteralPath $link) { throw 'Shortcut remained after uninstall.' } }
