@@ -12,7 +12,17 @@ foreach ($version in @($nodeVersion, $electronVersion)) {
 [void](New-Item -ItemType Directory -Path $runtime -Force)
 
 function Get-VerifiedDownload([string]$Url, [string]$SumsUrl, [string]$Entry, [string]$Destination) {
-    $sums = (Invoke-WebRequest -Uri $SumsUrl -UseBasicParsing).Content
+    $content = (Invoke-WebRequest -Uri $SumsUrl -UseBasicParsing).Content
+    # GitHub serves SHASUMS256.txt as application/octet-stream. PowerShell 7
+    # returns byte[] for that response, whereas text/plain is returned as string.
+    if ($content -is [byte[]]) {
+        $sums = [Text.UTF8Encoding]::new($false, $true).GetString($content)
+    } elseif ($content -is [string]) {
+        $sums = $content
+    } else {
+        throw "Unerwartetes Antwortformat der offiziellen SHA256-Pruefsummen fuer $Entry."
+    }
+    $sums = $sums.TrimStart([char]0xFEFF)
     $line = @($sums -split "`n" | Where-Object { $_.Trim() -match ('^[a-fA-F0-9]{64}\s+\*?' + [Regex]::Escape($Entry) + '$') })
     if ($line.Count -ne 1) { throw "Keine eindeutige offizielle SHA256-Pruefsumme fuer $Entry." }
     $expected = ($line[0].Trim() -split '\s+')[0]
