@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +30,8 @@ async function start() {
   const tempPaths=[...output.matchAll(/^LAUNCHER payload-extracted ([^\r\n]+)$/gm)].map(match=>path.resolve(match[1]));
   assert.equal(tempPaths.length,1,'one isolated runtime directory reported by this launcher');
   const temp=tempPaths[0];
-  assert.equal(path.dirname(temp).toLowerCase(),path.resolve(os.tmpdir()).toLowerCase());
+  // Windows may report the same temp folder with its long name or an 8.3 alias.
+  assert.equal((await realpath(path.dirname(temp))).toLowerCase(),(await realpath(os.tmpdir())).toLowerCase());
   assert.match(path.basename(temp),/^Netzwerk-Kompass-[a-f0-9]{32}$/i);
   assert.ok((await stat(temp)).isDirectory());
   for (const file of ['scripts/lag-hotkey.cs', 'scripts/lag-hotkey.ps1', 'scripts/game-packets.cs', 'desktop/native-hotkey.cjs']) {
