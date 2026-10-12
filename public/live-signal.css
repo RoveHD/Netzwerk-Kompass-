@@ -1,10 +1,39 @@
-#live-signal{position:sticky;top:var(--header-height);height:4px;z-index:6}
-.live-signal-track{position:relative;display:grid;grid-template-columns:repeat(60,minmax(0,1fr));align-items:end;width:100%;height:4px;min-height:4px;color:inherit;text-decoration:none;background:var(--line);isolation:isolate;overflow:clip;overflow-clip-margin:8px}
-.live-signal-sample{position:relative;display:block;width:100%;height:100%;align-self:end;max-height:100%;transform-origin:bottom;transition:height 220ms ease,opacity 180ms ease}
-.live-signal-sample::before{position:absolute;inset:-8px 0;content:""}
-.live-signal-sample::after{position:absolute;right:0;bottom:0;width:min(2px,100%);height:100%;border-radius:1px 1px 0 0;background:var(--muted);content:"";transition:background-color 220ms ease}
-.live-signal-sample.is-ok::after{background:var(--teal)}.live-signal-sample.is-slow::after{background:var(--orange)}.live-signal-sample.is-loss::after{background:var(--red)}.live-signal-sample.is-unknown::after{opacity:.55}
-.live-signal-sample:hover{opacity:.8}.live-signal-track:focus-visible{outline:2px solid var(--teal);outline-offset:2px}.live-signal-track:focus-visible .live-signal-sample{opacity:1}
-.live-signal-sample.is-arriving{animation:live-signal-arrive 260ms ease-out both}@keyframes live-signal-arrive{from{opacity:.25;transform:scaleY(.35)}to{opacity:1;transform:scaleY(1)}}
+:root { --signal-height: 48px; }
+#live-signal { position: sticky; top: var(--header-height); height: var(--signal-height); z-index: 6; background: var(--bg); border-bottom: 1px solid var(--line); }
+.live-signal-track { display: grid; grid-template-columns: auto minmax(120px, 320px) minmax(0, 1fr) auto; align-items: center; gap: 24px; width: 100%; height: 100%; padding: 0 20px; color: var(--text); text-decoration: none; font-size: 12px; }
+.live-signal-heading { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.live-signal-heading strong { font-size: 12px; font-weight: 600; }
+.live-signal-phase { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.live-signal-phase::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+.live-signal-track[data-running=true] .live-signal-phase::before { background: var(--teal); }
+.live-signal-chart { position: relative; display: grid; grid-template-columns: repeat(60, minmax(0, 1fr)); align-items: end; gap: 2px; height: 24px; border-bottom: 1px solid var(--line); }
+.live-signal-chart:empty::after { content: 'Noch keine Messwerte'; position: absolute; inset: 0; display: grid; align-items: center; color: var(--muted); font-size: 12px; }
+.live-signal-track[data-running=false] .live-signal-chart { opacity: .45; }
+.live-signal-sample { position: relative; display: block; width: 100%; min-height: 2px; max-height: 100%; align-self: end; transform-origin: bottom; transition: height 220ms ease, opacity 180ms ease; }
+.live-signal-sample::before { position: absolute; inset: -4px -1px; content: ''; }
+.live-signal-sample::after { display: block; width: 100%; height: 100%; border-radius: 1px 1px 0 0; background: var(--muted); content: ''; }
+.live-signal-sample.is-ok::after { background: var(--teal); opacity: .65; }
+.live-signal-sample.is-slow::after { background: var(--orange); }
+.live-signal-sample.is-loss::after { background: var(--red); }
+.live-signal-sample.is-unknown::after { opacity: .55; }
+.live-signal-sample:hover::after { opacity: 1; }
+.live-signal-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 0 16px; min-width: 0; color: var(--muted); }
+.live-signal-issues.has-loss { color: var(--orange); }
+.live-signal-action { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+.live-signal-action > span { color: var(--text); font-size: 16px; }
+.live-signal-track:hover .live-signal-action { color: var(--text); }
+.live-signal-track:focus-visible { outline: 2px solid var(--teal); outline-offset: -3px; }
+@media (max-width: 1000px) {
+  .live-signal-track { grid-template-columns: auto minmax(100px, 240px) minmax(0, 1fr) auto; gap: 16px; }
+}
+@media (max-width: 600px) {
+  :root { --signal-height: 76px; }
+  .live-signal-track { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 26px 28px; gap: 0 16px; align-content: center; padding: 0 16px; }
+  .live-signal-heading { grid-column: 1; grid-row: 1; }
+  .live-signal-action { grid-column: 2; grid-row: 1; }
+  .live-signal-chart { grid-column: 1; grid-row: 2; height: 20px; gap: 1px; }
+  .live-signal-summary { grid-column: 2; grid-row: 2; justify-content: flex-end; max-width: 136px; font-size: 12px; text-align: right; line-height: 1.2; }
+  .live-signal-count { display: none; }
+}
 .overview-status-icon{display:grid;place-items:center;flex:none;width:48px;height:48px;font-size:0}.overview-status-ring{display:block;width:48px;height:48px;overflow:visible}.overview-status-ring circle{transition:stroke 220ms ease,stroke-dasharray 220ms ease,stroke-dashoffset 220ms ease}
-@media(prefers-reduced-motion:reduce){.live-signal-sample,.live-signal-sample::after,.overview-status-ring circle{transition:none}.live-signal-sample.is-arriving{animation:none}}
+@media(prefers-reduced-motion:reduce){.live-signal-sample,.overview-status-ring circle{transition:none}}

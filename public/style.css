@@ -29,7 +29,8 @@
 
 .repeater-connection{border-top:1px solid var(--line-soft);margin-top:16px;padding-top:16px}.repeater-connection label{display:block;margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:600}.repeater-connection select{width:100%;min-width:0}
 
-.history-scroll-list,.history-table-wrap,.table-scroll,.fritzbox-table-wrap,.fritzbox-host-actions,.fritzbox-warnings,.targets-list,.events-list,.diagnosis-list,.network-warnings,.ai-archive-result,.ping-target-options,.mesh-topology-detail{max-height:clamp(220px,50vh,420px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;align-content:start}
+/* Keep lists independently scrollable, then let vertical wheel input continue on the page. */
+.history-scroll-list,.history-table-wrap,.table-scroll,.fritzbox-table-wrap,.fritzbox-host-actions,.fritzbox-warnings,.targets-list,.events-list,.diagnosis-list,.network-warnings,.ai-archive-result,.ping-target-options,.mesh-topology-detail{max-height:clamp(220px,50vh,420px);overflow:auto;overscroll-behavior:contain auto;scrollbar-gutter:stable;align-content:start}
 .history-scroll-list{padding:8px}.targets-list{max-height:clamp(280px,65vh,650px);padding:8px}
 .speed-history-pings{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;margin-top:16px}.speed-history-pings span,.speed-history-pings strong{display:block}.speed-history-pings span{font-size:12px;color:var(--muted)}.speed-history-pings strong{font-size:16px;margin-top:8px}
 :is(.history-scroll-list,.history-table-wrap,.table-scroll,.fritzbox-table-wrap,.fritzbox-host-actions,.fritzbox-warnings,.targets-list,.events-list,.diagnosis-list,.network-warnings,.ai-archive-result,.ping-target-options,.mesh-topology-detail):focus-visible{outline:2px solid var(--teal);outline-offset:3px;border-radius:6px}

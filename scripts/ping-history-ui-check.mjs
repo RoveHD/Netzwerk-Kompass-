@@ -42,6 +42,14 @@ try {
   assert.match(await metric('loss').innerText(), /Max\. 10 % \/ Min\./);
   assert.match(await metric('loss').innerText(), /6 von 60 verloren/);
   assert.equal(await page.locator('.ping-statistics tr[data-host="1.1.1.1"] td').last().innerText(), '1');
+  // A short table must pass vertical wheel input to the page, even though
+  // it remains a horizontal scroll container on narrow screens.
+  const statistics = page.locator('.ping-statistics');
+  assert.ok(await statistics.evaluate(el => el.scrollHeight <= el.clientHeight));
+  await statistics.hover({ position: { x: 80, y: 80 } });
+  const beforeTableScroll = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 180);
+  await page.waitForFunction(before => scrollY > before, beforeTableScroll);
   const full = await range();
   await page.locator('#ping-chart-in').click();
   const zoomed = await range(); assert.equal(span(zoomed), span(full) / 2);
@@ -51,13 +59,24 @@ try {
   await page.locator('#ping-chart-later').click(); assert.ok(Math.abs((await range())[0] - zoomed[0]) < 1);
   await chart.scrollIntoViewIfNeeded();
   let box = await chart.boundingBox();
+  const beforeChartScroll = await page.evaluate(() => scrollY);
+  await page.mouse.move(box.x + box.width * .6, box.y + box.height * .4);
+  await page.mouse.wheel(0, -140);
+  await page.waitForFunction(before => scrollY < before, beforeChartScroll);
+  assert.deepEqual(await range(), zoomed, 'Normal wheel scrolls without zooming');
+  await chart.scrollIntoViewIfNeeded(); box = await chart.boundingBox();
+  const beforeControlScroll = await page.evaluate(() => scrollY);
+  await page.keyboard.down('Control');
   await page.mouse.move(box.x + box.width * .6, box.y + box.height * .4); await page.mouse.wheel(0, -200);
+  await page.keyboard.up('Control');
   await page.waitForFunction(before => Number(document.querySelector('#ping-history-chart').dataset.to) - Number(document.querySelector('#ping-history-chart').dataset.from) < before, span(zoomed));
+  assert.equal(await page.evaluate(() => scrollY), beforeControlScroll, 'Ctrl+wheel zooms without scrolling');
   const wheeled = await range();
   await page.mouse.move(box.x + box.width * .6, box.y + box.height * .4); await page.mouse.down();
   await page.mouse.move(box.x + box.width * .75, box.y + box.height * .4, { steps: 5 }); await page.mouse.up();
   const dragged = await range(); assert.ok(dragged[0] < wheeled[0]); assert.ok(Math.abs(span(dragged) - span(wheeled)) < 1);
-  await chart.focus(); await page.keyboard.press('+'); const keyed = await range(); assert.ok(span(keyed) < span(dragged));
+  await chart.focus(); await page.keyboard.press('Escape'); // Leave hover inspection before keyboard panning.
+  await page.keyboard.press('+'); const keyed = await range(); assert.ok(span(keyed) < span(dragged));
   await page.keyboard.press('ArrowRight'); assert.ok((await range())[0] > keyed[0]);
   const retained = await range();
   records.push({ ...records.at(-1), at: at(1205) });
@@ -74,12 +93,11 @@ try {
   assert.deepEqual(await range(), retained);
   await page.locator('[data-history-tab="events"]').click();
   await page.locator('[data-history-tab="connection"]').click(); assert.deepEqual(await range(), retained);
-  // Exercise the actual 15-second automatic refresh without sleeping.
+  // Automatic live refresh retains the existing chart and the inspected range.
   const beforeAuto = await chart.elementHandle();
   const autoResponse = page.waitForResponse(response => response.url().includes('/api/history?'));
-  // The first interval may still be throttled by the immediately preceding manual refresh.
-  await page.clock.runFor(30001); await autoResponse;
-  await page.waitForFunction(old => !old.isConnected, beforeAuto);
+  await page.clock.runFor(2200); await autoResponse;
+  assert.equal(await beforeAuto.evaluate(old => old.isConnected), true);
   assert.deepEqual(await range(), retained);
   await page.locator('#history-hours').selectOption('24');
   await page.waitForFunction(() => document.querySelector('#ping-history-chart')?.dataset.full === 'true');
@@ -111,9 +129,35 @@ try {
   records = [{ ...records[0], results: records[0].results.map(result => ({ ...result, ok: false, ms: null, status: 'TimedOut' })) }];
   await refresh(); assert.match(await chart.textContent(), /Keine Antworten im Ausschnitt/);
   assert.match(await metric('loss').innerText(), /Max\. 100 %/);
-  records = []; await refresh(); await chart.waitFor({ state: 'detached' });
+  // Long archives still scroll independently; reaching the end resumes page
+  // scrolling. Background refresh must retain both positions.
+  records = Array.from({ length: 100 }, (_, i) => ({ type: 'event', at: at(i), level: 'info', title: `Testereignis ${i}`, detail: 'Isolierte Testdaten' }));
+  await page.setViewportSize({ width: 1440, height: 650 });
+  await refresh(); await page.locator('[data-history-tab="events"]').click();
+  const eventTable = page.locator('#history-view .history-table-wrap');
+  assert.ok(await eventTable.evaluate(el => el.scrollHeight > el.clientHeight));
+  await page.evaluate(() => scrollTo(0, 0));
+  await eventTable.hover({ position: { x: 80, y: 80 } });
+  const beforeInnerScroll = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 120);
+  await page.waitForFunction(() => document.querySelector('#history-view .history-table-wrap').scrollTop >= 120);
+  assert.equal(await page.evaluate(() => scrollY), beforeInnerScroll);
+  const innerPosition = await eventTable.evaluate(el => el.scrollTop);
+  const oldTable = await eventTable.elementHandle();
+  const archiveRefresh = page.waitForResponse(response => response.url().includes('/api/history?'));
+  await page.clock.runFor(2200); await archiveRefresh;
+  await page.waitForFunction(old => !old.isConnected, oldTable);
+  assert.equal(await eventTable.evaluate(el => el.scrollTop), innerPosition);
+  assert.equal(await page.evaluate(() => scrollY), beforeInnerScroll);
+  await eventTable.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await eventTable.hover({ position: { x: 81, y: 80 } });
+  const beforeBoundaryScroll = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 150);
+  await page.waitForFunction(before => scrollY > before, beforeBoundaryScroll);
+  assert.ok(await eventTable.evaluate(el => el.scrollTop >= el.scrollHeight - el.clientHeight - 1));
+  records = []; await refresh(); await page.locator('[data-history-tab="connection"]').click(); await chart.waitFor({ state: 'hidden' });
   assert.match(await page.locator('.ping-chart').innerText(), /keine Ping-Messungen/);
   assert.deepEqual(errors, []); assert.deepEqual(badAssets, []);
-  const result = { passed: true, widths: [1440, 768, 390, 320], checks: ['peaks and worst-minute denominator', 'buttons, pointer wheel and drag, keyboard, double-click reset', 'absolute range survives manual/automatic refresh, selection and tab changes', 'period change and measurement reset clear zoom', 'raw point tooltips', 'single point, all lost, no data', 'responsive chart and no page overflow', 'all imported assets load'], errors, badAssets };
+  const result = { passed: true, widths: [1440, 768, 390, 320], checks: ['peaks and worst-minute denominator', 'page scrolling over short table and chart, Ctrl+wheel zoom', 'long archive inner scroll, boundary chaining and refresh preservation', 'buttons, pointer drag, keyboard, double-click reset', 'absolute range survives manual/automatic refresh, selection and tab changes', 'period change and measurement reset clear zoom', 'raw point tooltips', 'single point, all lost, no data', 'responsive chart and no page overflow', 'all imported assets load'], errors, badAssets };
   await writeFile(new URL('results.json', output), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
 } finally { await browser?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await monitor.close(); }

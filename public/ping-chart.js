@@ -39,6 +39,26 @@ export function panPingRange(range, domain, delta) {
   return fitPingRange([current[0] + delta, current[1] + delta], domain);
 }
 
+export function followPingRange(range, domain) {
+  const span = Math.min(domain[1] - domain[0], Math.max(Math.min(MIN_WINDOW, domain[1] - domain[0]), range[1] - range[0]));
+  return [domain[1] - span, domain[1]];
+}
+
+export function initialPingRange(viewport, domain) {
+  return viewport?.followLatest && viewport.range ? followPingRange(viewport.range, domain) : fitPingRange(viewport?.range, domain);
+}
+
+export function updatePingRange(viewport, domain) {
+  if (viewport?.followLatest && !viewport.range) return fitPingRange(null, domain);
+  return viewport?.followLatest ? followPingRange(viewport.range, domain) : fitPingRange(viewport?.range, domain);
+}
+
+export function mergeQueuedPingUpdate(queued, input, options = {}) {
+  return queued
+    ? { input: Array.isArray(input) ? input : queued.input, options: { ...queued.options, ...(options || {}) } }
+    : { input, options: options || {} };
+}
+
 export function preparePingSeries(series) {
   return series.map(item => {
     let segment = 0, previousTime = null, previousEpoch;
@@ -113,14 +133,18 @@ export function nearestPingTime(series, time, range, maxDistance = null) {
   return nearest != null && distance <= maxGap ? nearest : null;
 }
 
-export function renderPingChart(parent, input, viewport) {
+export function renderPingChart(parent, input, viewport = {}) {
   parent.classList.add('ping-chart');
-  const series = preparePingSeries(input);
-  let first = Infinity, last = -Infinity;
-  for (const item of series) for (const point of item.values) if (Number.isFinite(point.time)) { first = Math.min(first, point.time); last = Math.max(last, point.time); }
-  if (!Number.isFinite(first)) { parent.append(node('div', 'history-empty', 'Für die angehakten Ziele liegen im Zeitraum keine Ping-Messungen vor.')); return () => {}; }
-  const domain = last - first < 60000 ? [(first + last) / 2 - 30000, (first + last) / 2 + 30000] : [first, last];
-  let range = fitPingRange(viewport.range, domain);
+  let series = preparePingSeries(input || []), domain, range, stateOptions = {};
+  const seriesDomain = items => {
+    let first = Infinity, last = -Infinity;
+    for (const item of items) for (const point of item.values) if (Number.isFinite(point.time)) { first = Math.min(first, point.time); last = Math.max(last, point.time); }
+    if (!Number.isFinite(first)) { const now = Date.now(); return [now - 30000, now + 30000]; }
+    return last - first < 60000 ? [last - 60000, last] : [first, last];
+  };
+  domain = seriesDomain(series);
+  if (typeof viewport.followLatest !== 'boolean') viewport.followLatest = true;
+  range = initialPingRange(viewport, domain);
   const full = () => range[1] - range[0] >= domain[1] - domain[0] - 1;
   viewport.range = full() ? null : [...range];
   const toolbar = node('div', 'ping-chart-toolbar');
@@ -130,22 +154,36 @@ export function renderPingChart(parent, input, viewport) {
   const button = (key, label, title, action) => {
     const el = node('button', 'button button-quiet', label); el.type = 'button'; el.id = `ping-chart-${key}`; el.title = title; el.setAttribute('aria-label', title); el.addEventListener('click', action); controls.append(el); return el;
   };
-  const zoomIn = button('in', '+', 'Diagramm vergrößern', () => commit(zoomPingRange(range, domain, .5)));
-  const zoomOut = button('out', '−', 'Diagramm verkleinern', () => commit(zoomPingRange(range, domain, 2)));
-  const earlier = button('earlier', '←', 'Frühere Messungen anzeigen', () => commit(panPingRange(range, domain, -(range[1] - range[0]) * .4)));
-  const later = button('later', '→', 'Spätere Messungen anzeigen', () => commit(panPingRange(range, domain, (range[1] - range[0]) * .4)));
-  const reset = button('reset', 'Alles', 'Gesamten Messzeitraum anzeigen', () => commit(domain));
+  const zoomIn = button('in', '+', 'Diagramm vergrößern', () => commit(zoomPingRange(range, domain, .5), { zoom: true }));
+  const zoomOut = button('out', '−', 'Diagramm verkleinern', () => commit(zoomPingRange(range, domain, 2), { zoom: true }));
+  const earlier = button('earlier', '←', 'Frühere Messungen anzeigen', () => commit(panPingRange(range, domain, -(range[1] - range[0]) * .4), { pan: true }));
+  const later = button('later', '→', 'Spätere Messungen anzeigen', () => commit(panPingRange(range, domain, (range[1] - range[0]) * .4), { pan: true }));
+  const reset = button('reset', 'Alles', 'Gesamten Messzeitraum anzeigen', () => commit(domain, { resetView: true }));
+  const live = button('live', 'Live folgen', 'Zum neuesten Messzeitpunkt wechseln und weiter folgen', () => commit(followPingRange(viewport.range, domain), { resetView: true }));
+  live.setAttribute('aria-pressed', String(Boolean(viewport.followLatest)));
   toolbar.append(status, controls);
   const frame = node('div', 'ping-chart-frame');
   const chart = svgNode('svg', { role: 'img', tabindex: '0', id: 'ping-history-chart', 'aria-label': 'Ping-Verlauf. Maus bewegt das Fadenkreuz. Eingabe oder Leertaste startet die Tastaturauswahl, Pfeiltasten wechseln Messpunkte, Escape beendet sie.', 'aria-describedby': 'ping-chart-help' });
   const tooltip = node('div', 'ping-chart-tooltip-html'); tooltip.hidden = true; tooltip.setAttribute('role', 'status'); tooltip.setAttribute('aria-live', 'polite');
   frame.append(chart, tooltip);
   const rangeLabel = node('p', 'ping-chart-range');
-  const help = node('p', 'chart-note', 'Mausrad zoomt, Ziehen verschiebt den Ausschnitt.'); help.id = 'ping-chart-help'; help.dataset.help = 'Maus: Messzeitpunkt anzeigen; Mausrad: zoomen; Ziehen: verschieben; Doppelklick: alles. Tastatur: Eingabe oder Leertaste starten, Pfeiltasten wechseln Messpunkte, Escape beendet die Auswahl.';
-  parent.append(toolbar, frame, rangeLabel, help);
-  let width = 1000, height = 340, drag = null, inspectedTime = null, pinned = false, inspectionLayer = null, inspectionFrame = 0, maxVisibleValue = 1;
+  const help = node('p', 'chart-note', 'Mausrad scrollt · Strg + Mausrad zoomt · Ziehen verschiebt den Ausschnitt.'); help.id = 'ping-chart-help'; help.dataset.help = 'Maus: Messzeitpunkt anzeigen; Mausrad: Seite scrollen; Strg + Mausrad: zoomen; Ziehen: verschieben; Doppelklick: alles. Tastatur: Eingabe oder Leertaste starten, Pfeiltasten wechseln Messpunkte, Escape beendet die Auswahl.';
+  const empty = node('div', 'history-empty', 'Für die angehakten Ziele liegen im Zeitraum keine Ping-Messungen vor.');
+  parent.append(toolbar, empty, frame, rangeLabel, help);
+  let width = 1000, height = 340, drag = null, queuedUpdate = null, disposed = false, inspectedTime = null, pinned = false, inspectionLayer = null, inspectionFrame = 0, maxVisibleValue = 1;
   const padding = () => ({ left: width < 500 ? 65 : 76, right: 16, top: 22, bottom: 42 });
+  function updateStatus() {
+    const hasData = series.some(item => item.values.some(point => Number.isFinite(point.time)));
+    const mode = stateOptions.connected === false ? 'Verbindung unterbrochen' : stateOptions.monitoring === false ? 'Monitoring pausiert' : !hasData ? 'Warte auf Messwerte' : viewport.followLatest ? 'Live · neueste Messungen folgen' : 'Ausschnitt angehalten';
+    status.textContent = `${mode} · ${full() ? 'Gesamtansicht' : `${fmt((domain[1] - domain[0]) / (range[1] - range[0]))}× vergrößert`}`;
+    live.setAttribute('aria-pressed', String(Boolean(viewport.followLatest)));
+    const active = viewport.followLatest && hasData && stateOptions.connected !== false && stateOptions.monitoring !== false;
+    live.dataset.liveState = active ? 'active' : 'waiting';
+    live.textContent = viewport.followLatest ? active ? 'Live aktiv' : 'Live bereit' : 'Zurück zu Live';
+  }
   function draw() {
+    const hasPoints = series.some(item => item.values.some(point => Number.isFinite(point.time)));
+    empty.hidden = hasPoints; frame.hidden = rangeLabel.hidden = !hasPoints;
     const rect = chart.getBoundingClientRect();
     if (rect.width) { width = rect.width; height = rect.height || 300; }
     chart.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -199,14 +237,19 @@ export function renderPingChart(parent, input, viewport) {
       }
     }
     inspectionLayer = svgNode('g', { class: 'ping-chart-inspection', 'pointer-events': 'none', 'aria-hidden': 'true' }); chart.append(inspectionLayer);
-    if (!count) chart.append(svgNode('text', { x: pad.left + plotWidth / 2, y: pad.top + plotHeight / 2, 'text-anchor': 'middle', class: 'history-axis-label' }, 'Keine Antworten im Ausschnitt'));
-    status.textContent = full() ? 'Gesamtansicht' : `${fmt((domain[1] - domain[0]) / (range[1] - range[0]))}× vergrößert`;
+    if (!count) chart.append(svgNode('text', { x: pad.left + plotWidth / 2, y: pad.top + plotHeight / 2, 'text-anchor': 'middle', class: 'history-axis-label' }, series.some(item => item.values.length) ? 'Keine Antworten im Ausschnitt' : 'Für die angehakten Ziele liegen im Zeitraum keine Ping-Messungen vor.'));
+    updateStatus();
     rangeLabel.textContent = `${timeLabel(range[0])} – ${timeLabel(range[1])}`;
-    zoomIn.disabled = range[1] - range[0] <= Math.min(MIN_WINDOW, domain[1] - domain[0]) + 1;
-    zoomOut.disabled = reset.disabled = full(); earlier.disabled = range[0] <= domain[0] + 1; later.disabled = range[1] >= domain[1] - 1;
+    zoomIn.disabled = !hasPoints || range[1] - range[0] <= Math.min(MIN_WINDOW, domain[1] - domain[0]) + 1;
+    zoomOut.disabled = reset.disabled = !hasPoints || full(); earlier.disabled = !hasPoints || range[0] <= domain[0] + 1; later.disabled = !hasPoints || range[1] >= domain[1] - 1;
     updateInspection();
   }
-  function commit(next) { range = fitPingRange(next, domain); viewport.range = full() ? null : [...range]; draw(); }
+  function commit(next, { pan = false, resetView = false, zoom = false } = {}) {
+    if (pan) viewport.followLatest = false;
+    if (resetView) viewport.followLatest = true;
+    range = viewport.followLatest && zoom ? followPingRange(next, domain) : fitPingRange(next, domain);
+    viewport.range = full() ? null : [...range]; draw();
+  }
   const localPoint = event => {
     const matrix = chart.getScreenCTM(); if (!matrix) return null;
     const point = chart.createSVGPoint(); point.x = event.clientX; point.y = event.clientY;
@@ -257,10 +300,11 @@ export function renderPingChart(parent, input, viewport) {
     if (!inspectionFrame) inspectionFrame = requestAnimationFrame(() => { inspectionFrame = 0; updateInspection(); });
   }
   chart.addEventListener('wheel', event => {
+    if (!event.ctrlKey) return;
     const point = localPoint(event); if (!inside(point) || !event.deltaY) return;
     event.preventDefault(); const pad = padding();
     const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1);
-    commit(zoomPingRange(range, domain, Math.exp(Math.max(-1, Math.min(1, pixels * .003))), (point.x - pad.left) / (width - pad.left - pad.right)));
+    commit(zoomPingRange(range, domain, Math.exp(Math.max(-1, Math.min(1, pixels * .003))), (point.x - pad.left) / (width - pad.left - pad.right)), { zoom: true });
   }, { passive: false });
   chart.addEventListener('pointerdown', event => {
     const point = localPoint(event); if (event.button !== 0 || !inside(point) || full() || drag) return;
@@ -276,7 +320,7 @@ export function renderPingChart(parent, input, viewport) {
     }
     if (drag.id !== event.pointerId) return;
     const point = localPoint(event); if (!point) return; const pad = padding(); drag.moved = Math.max(drag.moved || 0, Math.abs(drag.x - point.x));
-    commit(panPingRange(drag.range, domain, (drag.x - point.x) / (width - pad.left - pad.right) * (drag.range[1] - drag.range[0])));
+    commit(panPingRange(drag.range, domain, (drag.x - point.x) / (width - pad.left - pad.right) * (drag.range[1] - drag.range[0])), { pan: true });
   });
   const finishDrag = event => {
     if (drag && event?.pointerId === drag.id && drag.moved < 3 && event.pointerType === 'touch') {
@@ -284,6 +328,7 @@ export function renderPingChart(parent, input, viewport) {
       if (inside(point)) setInspectionAt(point, true);
     }
     drag = null; chart.classList.remove('is-dragging');
+    if (queuedUpdate && !disposed) { const update = queuedUpdate; queuedUpdate = null; applyUpdate(update.input, update.options); }
   };
   chart.addEventListener('pointerup', event => {
     if (!drag && event.pointerType === 'touch') {
@@ -301,7 +346,7 @@ export function renderPingChart(parent, input, viewport) {
   tooltip.addEventListener('pointerleave', () => {
     if (!pinned) { inspectedTime = null; if (inspectionFrame) cancelAnimationFrame(inspectionFrame); inspectionFrame = 0; updateInspection(); }
   });
-  chart.addEventListener('dblclick', event => { if (inside(localPoint(event))) commit(domain); });
+  chart.addEventListener('dblclick', event => { if (inside(localPoint(event))) commit(domain, { resetView: true }); });
   chart.addEventListener('keydown', event => {
     const timestamps = [...new Set(series.flatMap(item => item.values.filter(point => Number.isFinite(point.time) && point.time >= range[0] && point.time <= range[1]).map(point => point.time)))].sort((a, b) => a - b);
     const moveInspection = delta => {
@@ -318,5 +363,23 @@ export function renderPingChart(parent, input, viewport) {
     if (actions[event.key]) { event.preventDefault(); actions[event.key](); }
   });
   const observer = new ResizeObserver(draw); observer.observe(chart); draw();
-  return () => { observer.disconnect(); finishDrag(); if (inspectionFrame) cancelAnimationFrame(inspectionFrame); frame.replaceChildren(); };
+  function applyUpdate(nextInput, options = {}) {
+    if (disposed) return false;
+    if (drag) {
+      queuedUpdate = mergeQueuedPingUpdate(queuedUpdate, nextInput, options);
+      return true;
+    }
+    if (Array.isArray(nextInput)) {
+      const previousViewport = { followLatest: viewport.followLatest, range: viewport.range };
+      series = preparePingSeries(nextInput); domain = seriesDomain(series);
+      range = updatePingRange(previousViewport, domain);
+      viewport.range = full() ? null : [...range];
+    }
+    stateOptions = { ...stateOptions, ...(options || {}) };
+    if (Array.isArray(nextInput)) draw(); else updateStatus();
+    return true;
+  }
+  const dispose = () => { if (disposed) return; disposed = true; observer.disconnect(); finishDrag(); queuedUpdate = null; if (inspectionFrame) cancelAnimationFrame(inspectionFrame); inspectionFrame = 0; frame.replaceChildren(); };
+  dispose.update = applyUpdate;
+  return dispose;
 }

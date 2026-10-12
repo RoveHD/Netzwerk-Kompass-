@@ -52,7 +52,7 @@ export function createApp(monitor,{token=randomBytes(32).toString('hex'),publicD
       if(req.method==='GET' && url.pathname==='/api/state') return json(200,snapshot());
       if(req.method==='GET' && url.pathname==='/api/analysis') {analysis.ensureChecked();return json(200,analysis.snapshot());}
       if(req.method==='GET' && url.pathname==='/api/analysis/report') return json(200,analysis.preview(Number(url.searchParams.get('hours')||1)));
-      if(req.method==='GET' && url.pathname==='/api/history') return json(200,monitor.historySnapshot(Number(url.searchParams.get('hours')||1)));
+      if(req.method==='GET' && url.pathname==='/api/history') return json(200,monitor.historySnapshot(Number(url.searchParams.get('hours')||1),url.searchParams.get('cursor')));
       if(req.method==='GET' && url.pathname==='/api/export') {
         res.setHeader('Content-Disposition',`attachment; filename="netzwerk-bericht-${new Date().toISOString().slice(0,10)}.json"`);
         return json(200,{...snapshot(),history:monitor.historySnapshot(168),exportedAt:new Date().toISOString(),notes:['Ping-Ausfall ist kein sicherer Offline-Nachweis.','PC-Adapterverkehr, FRITZ!Box-Gesamtverkehr und Geräte-Internetverkehr sind getrennte, sich überschneidende Quellen; nicht addieren.','Messwerte: letzte 600 Pings pro Ziel; gespeicherter Verlauf ist mengenbegrenzt, vollständige Messungen in data/messungen-*.jsonl.','Gerätenamen, lokale IP- und MAC-Adressen sind private Informationen.']});

@@ -48,3 +48,27 @@ export function createHistoryRequestGate() {
     get pending() { return current !== null; },
   };
 }
+
+// IDs identify appended records, including measurements with identical timestamps.
+export function mergeHistoryRecords(previous, payload) {
+  const incoming = Array.isArray(payload.records) ? payload.records : [];
+  const ids = Array.isArray(payload.recordIds) ? payload.recordIds : [];
+  if (!payload.incremental) return { records: incoming, recordIds: ids, cursor: payload.cursor || null, changed: true };
+  if (ids.length !== incoming.length || previous.recordIds?.length !== previous.records.length) throw new Error('Verlauf muss neu synchronisiert werden.');
+  const removed = new Set(payload.removedRecordIds || []);
+  const from = Date.parse(payload.from), to = Date.parse(payload.to);
+  const entries = new Map();
+  let changed = incoming.length > 0;
+  previous.records.forEach((record, index) => {
+    const at = Date.parse(record.at), id = previous.recordIds[index];
+    if (removed.has(id) || at < from || at > to) changed = true;
+    else entries.set(id, record);
+  });
+  incoming.forEach((record, index) => {
+    const at = Date.parse(record.at);
+    if (!removed.has(ids[index]) && at >= from && at <= to) entries.set(ids[index], record);
+  });
+  // The server owns retention/pruning; never keep records that it evicted.
+  if (Number.isSafeInteger(payload.total) && entries.size !== payload.total) throw new Error('Verlauf muss neu synchronisiert werden.');
+  return { records: changed ? [...entries.values()] : previous.records, recordIds: changed ? [...entries.keys()] : previous.recordIds, cursor: payload.cursor || null, changed };
+}

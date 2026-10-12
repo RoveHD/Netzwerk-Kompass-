@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fitPingRange, zoomPingRange, panPingRange, preparePingSeries, isPingLossPoint, visiblePingValues, nearestPingPoint, nearestPingTime, pingTimeX, niceAxisTicks } from '../public/ping-chart.js';
+import { fitPingRange, zoomPingRange, panPingRange, followPingRange, initialPingRange, updatePingRange, mergeQueuedPingUpdate, preparePingSeries, isPingLossPoint, visiblePingValues, nearestPingPoint, nearestPingTime, pingTimeX, niceAxisTicks } from '../public/ping-chart.js';
 
 test('latency axes use rounded ticks and include the 30 ms reference range', () => {
   assert.deepEqual(niceAxisTicks(75), [0,25,50,75]);
@@ -13,6 +13,25 @@ test('zoom anchors to pointer and clamps minimum span and domain', () => {
   assert.deepEqual(zoomPingRange([10000, 20000], [0, 100000], .01), [10000, 20000]);
   assert.deepEqual(zoomPingRange([10000, 20000], [0, 100000], 100), [0, 100000]);
   assert.deepEqual(fitPingRange(null, [0, 1000]), [0, 1000]);
+});
+
+test('live range follows the newest timestamp while preserving zoom span', () => {
+  assert.deepEqual(followPingRange([20000, 50000], [10000, 110000]), [80000, 110000]);
+  assert.deepEqual(followPingRange([0, 100000], [30000, 50000]), [30000, 50000]);
+});
+
+test('live initialization preserves stored zoom and a stored full view stays full after data growth', () => {
+  assert.deepEqual(initialPingRange({ followLatest: true, range: [20000, 50000] }, [10000, 110000]), [80000, 110000]);
+  assert.deepEqual(initialPingRange({ followLatest: true, range: null }, [0, 100000]), [0, 100000]);
+  assert.deepEqual(updatePingRange({ followLatest: true, range: null }, [0, 200000]), [0, 200000]);
+});
+
+test('status-only drag update preserves queued measurement data and merges state', () => {
+  const measurements = [{ name: 'Gateway', values: [] }];
+  const queued = mergeQueuedPingUpdate(null, measurements, { monitoring: true });
+  const merged = mergeQueuedPingUpdate(queued, undefined, { connected: false });
+  assert.equal(merged.input, measurements);
+  assert.deepEqual(merged.options, { monitoring: true, connected: false });
 });
 
 test('pan keeps the span at both boundaries and refresh keeps absolute inspected times', () => {

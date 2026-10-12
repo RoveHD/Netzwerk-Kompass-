@@ -14,7 +14,7 @@ import { initNavigation } from './navigation.js';
 import { initGames } from './games.js';
 import { initLagHotkey } from './lag-hotkey.js';
 import { summarizeSpeedHistory } from './speed-history.js';
-import { resolvePingSelection, togglePingSelection, selectPingTarget, pingTargetColor, pingTargetDash, createHistoryRequestGate } from './history-selection.js';
+import { resolvePingSelection, togglePingSelection, selectPingTarget, pingTargetColor, pingTargetDash, createHistoryRequestGate, mergeHistoryRecords } from './history-selection.js';
 import { jitterFor, summarizePingHistory } from './ping-statistics.js';
 import { renderPingChart, niceAxisTicks } from './ping-chart.js';
 import { createLagPhaseSection } from './lag-incidents.js';
@@ -22,7 +22,7 @@ import { createLagPhaseSection } from './lag-incidents.js';
 const $ = (selector) => document.querySelector(selector);
 const apiToken = document.querySelector('meta[name="api-token"]')?.content || '';
 const state = { value: null, generation: 0, busy: new Set(), error: '', pollTimer: null, toastTimer: null, history: { records: [], hours: 1, tab: 'connection', pingHosts: null, pingTargets: new Map(), pingJitter: false, requestGate: createHistoryRequestGate(), loaded: false, loading: false, truncated: false, retentionDays: 7, error: '', updatedAt: null } };
-const navigation = initNavigation({ onChange: page => { setText('#page-title', page.title); setText('.intro', page.intro); restoreScroll($('#page-'+page.id));for(const id of ['history-view','fritzbox-data','session-list'])restoreScroll($('#'+id)); } });
+const navigation = initNavigation({ onChange: page => { setText('#page-title', page.title); setText('.intro', page.intro); restoreScroll($('#page-'+page.id));for(const id of ['history-view','fritzbox-data','session-list'])restoreScroll($('#'+id)); if(page.id==='history')queueMicrotask(()=>loadHistory()); } });
 
 function setText(selector, value) { const el = $(selector); if (el) { if (el.matches('.summary-value, .traffic-readings strong')) setMeasurement(el, value, ['#download-value','#upload-value'].includes(selector) ? 'Mbit/s' : ''); else { const text = value == null || value === '' ? '–' : String(value); if (el.textContent !== text) el.textContent = text; } } }
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = String(text); return node; }
@@ -329,7 +329,8 @@ function renderHistoryChart(parent, series, options = {}) {
   parent.append(chart);
   const legend = element('div', 'history-legend'); series.forEach((item) => { const entry = element('span'); const mark = element('i'); mark.style.backgroundColor = item.color; entry.append(mark, document.createTextNode(item.name)); legend.append(entry); }); if (options.legend !== false) parent.append(legend);
 }
-function renderHistoryConnection(view) {
+function renderHistoryConnection(view, { deferChart = false } = {}) {
+  let chartUpdate = null;
   const records = historyRecords('ping');
   const targetMap = state.history.pingTargets; records.forEach(record => safeArray(record.results).forEach(result => { if (result.host) targetMap.set(result.host, result); }));
   safeArray(state.value?.targets).forEach(target => { if (target.host) targetMap.set(target.host, target); });
@@ -385,12 +386,17 @@ function renderHistoryConnection(view) {
     }); view.append(table);
     view.append(hint('ping-statistics-note', 'Statistik für den gesamten gewählten Zeitraum.', 'Der Zoom ändert den Zeitraum der Statistik nicht. Max. Paketverlust zeigt die schlimmste Kalenderminute, auch angefangene Minuten; Messfehler zählen nicht als Verlust.'));
     const chart = element('div', 'history-chart'); view.append(chart);
-    state.history.disposeChart = renderPingChart(chart, series, state.history.pingViewport ||= { range: null });
+    if (deferChart) chartUpdate = { chart, series };
+    else {
+      state.history.disposeChart = renderPingChart(chart, series, state.history.pingViewport ||= { range: null });
+      state.history.disposeChart.update?.(undefined, historyChartStatus());
+    }
   }
   const trafficRecords = state.history.records.filter(record => record.type === 'traffic' || record.type === 'fritzbox');
   view.append(createLagPhaseSection({ pingRecords: records, selectedHosts: selected, trafficRecords, historyTruncated: state.history.truncated, onShowWindow: (from, to) => {
     state.history.pingViewport ||= { range: null };
     state.history.pingViewport.range = [from, to];
+    state.history.pingViewport.followLatest = false;
     renderHistoryView();
     const chart = document.querySelector('#ping-history-chart');
     chart?.scrollIntoView({ block: 'center' });
@@ -411,6 +417,7 @@ function renderHistoryConnection(view) {
     else { const table = historyTable(['Ziel', 'Zeit zum Marker', 'Messwert']); nearest.forEach(({ result, record }) => appendHistoryRow(table, [result.label || result.host, Math.round((new Date(record.at).getTime() - markAt) / 1000) + ' s', result.ok ? fmt(result.ms) + ' ms' : result.status === 'measurement_error' ? 'Messfehler' : 'Keine Ping-Antwort'])); card.append(table); }
     list.append(card);
   });}
+  return chartUpdate;
 }
 function renderHistoryTraffic(view) {
   renderHealthHistory(view,historyRecords('traffic'));
@@ -550,42 +557,73 @@ function historyScrollList(id,label) {
   list.id=id;list.tabIndex=0;list.setAttribute('role','region');list.setAttribute('aria-label',`${label} – separat scrollbar`);
   return list;
 }
-function renderHistoryView() {
+function historyChartStatus() { return { monitoring: state.value?.monitoring ?? false, connected: !state.history.error && state.apiConnected !== false }; }
+function patchHistorySections(view, next, chart, placeholder) {
+  const before = [], after = []; let passed = false;
+  for (const child of view.childNodes) { if (child === chart) passed = true; else (passed ? after : before).push(child); }
+  const nextBefore = [], nextAfter = []; passed = false;
+  for (const child of next.childNodes) { if (child === placeholder) passed = true; else (passed ? nextAfter : nextBefore).push(child); }
+  const patch = (oldNodes, newNodes, anchor) => {
+    newNodes.forEach((node, index) => {
+      if (!oldNodes[index]) view.insertBefore(node, anchor);
+      else if (!oldNodes[index].isEqualNode(node)) oldNodes[index].replaceWith(node);
+    });
+    oldNodes.slice(newNodes.length).forEach(node => node.remove());
+  };
+  patch(before, nextBefore, chart); patch(after, nextAfter, null);
+}
+function renderHistoryView({ live = false } = {}) {
   const view = $('#history-view'); if (!view) return;
-  state.history.disposeChart?.(); state.history.disposeChart = null;
   captureScroll(view);
   const focusedId = view.contains(document.activeElement) ? document.activeElement.id : '';
-  view.replaceChildren(); view.setAttribute('aria-labelledby', `history-tab-${state.history.tab}`);
-  if (state.history.error) { view.append(element('div', 'history-error', state.history.error)); }
-  else if (!state.history.loaded) view.append(historyEmpty('Verlauf wird geladen …'));
-  if (state.history.truncated) view.append(element('div', 'history-notice', 'Ältere Messungen findest du im lokalen Protokollarchiv.'));
+  const chart = live && state.history.tab === 'connection' && state.history.disposeChart?.update && view.querySelector('.history-chart.ping-chart');
+  const content = chart ? document.createDocumentFragment() : view;
+  if (!chart) { state.history.disposeChart?.(); state.history.disposeChart = null; view.replaceChildren(); }
+  view.setAttribute('aria-labelledby', `history-tab-${state.history.tab}`);
+  if (state.history.error) { content.append(element('div', 'history-error', state.history.error)); }
+  else if (!state.history.loaded) content.append(historyEmpty('Verlauf wird geladen …'));
+  if (state.history.truncated) content.append(element('div', 'history-notice', 'Ältere Messungen findest du im lokalen Protokollarchiv.'));
   const messages = [...safeArray(state.history.warnings).map((warning) => typeof warning === 'string' ? warning : warning?.message || warning?.detail || warning?.title || 'Hinweis zum Verlauf'), ...(state.history.lastError ? [state.history.lastError] : [])];
-  messages.forEach((message) => view.append(element('div', 'history-service-message', message)));
+  messages.forEach((message) => content.append(element('div', 'history-service-message', message)));
   const renderers = { connection: renderHistoryConnection, traffic: renderHistoryTraffic, wireless: renderHistoryWireless, devices: renderHistoryDevices, speed: renderHistorySpeed, events: renderHistoryEvents, fritzbox: (container) => renderFritzboxHistory(container, historyRecords('fritzbox')) };
-  if (state.history.loaded) (renderers[state.history.tab] || renderHistoryConnection)(view);
+  const update = state.history.loaded && (renderers[state.history.tab] || renderHistoryConnection)(content, { deferChart: !!chart });
+  if (chart && update) {
+    patchHistorySections(view, content, chart, update.chart);
+    state.history.disposeChart.update(update.series, historyChartStatus());
+  } else if (chart) { state.history.disposeChart?.(); state.history.disposeChart = null; view.replaceChildren(content); }
   view.dataset.scrollScope=state.history.tab;restoreScroll(view);
-  const restore = focusedId && view.querySelector(`#${CSS.escape(focusedId)}`); if (restore) restore.focus({ preventScroll: true });
+  const restore = focusedId && view.querySelector(`#${CSS.escape(focusedId)}`); if (restore && document.activeElement !== restore) restore.focus({ preventScroll: true });
 }
 async function loadHistory(force = false) {
-  const h = state.history; if (!force && h.updatedAt && Date.now() - h.updatedAt < 15000) return;
+  const h = state.history;
   const requestToken = h.requestGate.begin(h.hours, force);
   if (!requestToken) return;
   const generation = state.generation;
+  let changed = false;
   h.loading = true; const view = $('#history-view'); if (view && !h.loaded) { view.replaceChildren(historyEmpty('Verlauf wird geladen …')); }
   try {
-    const payload = await request(`/api/history?hours=${encodeURIComponent(h.hours)}`);
+    const cursor = !force && h.loadedHours === h.hours && h.cursor ? `&cursor=${encodeURIComponent(h.cursor)}` : '';
+    const payload = await request(`/api/history?hours=${encodeURIComponent(h.hours)}${cursor}`);
     if (!h.requestGate.isCurrent(requestToken) || generation !== state.generation || h !== state.history) return;
-    if (h.loadedHours !== h.hours) { h.pingViewport = { range: null }; h.loadedHours = h.hours; }
-    h.records = safeArray(payload.records); h.from = payload.from; h.to = payload.to; h.truncated = !!payload.truncated; h.retentionDays = payload.retentionDays || 7; h.warnings = safeArray(payload.warnings); h.lastError = payload.lastError || ''; h.error = ''; h.loaded = true; h.updatedAt = Date.now();
+    if (h.loadedHours !== h.hours || h.measurementStartedAt !== payload.measurementStartedAt) { h.pingViewport = { range: null }; h.loadedHours = h.hours; liveResetChart(); }
+    const merged = mergeHistoryRecords(h, payload);
+    changed = merged.changed || !!h.error || h.truncated !== !!payload.truncated || JSON.stringify(h.warnings) !== JSON.stringify(payload.warnings || []) || h.lastError !== (payload.lastError || '');
+    h.records = merged.records; h.recordIds = merged.recordIds; h.cursor = merged.cursor; h.measurementStartedAt = payload.measurementStartedAt;
+    h.from = payload.from; h.to = payload.to; h.truncated = !!payload.truncated; h.retentionDays = payload.retentionDays || 7; h.warnings = safeArray(payload.warnings); h.lastError = payload.lastError || ''; h.error = ''; h.loaded = true; h.updatedAt = Date.now();
     setText('#history-retention', `Bis zu ${h.retentionDays} Tage lokal gespeichert; bei vielen Messungen kürzer.`);
     setText('#history-updated', `Aktualisiert ${historyTime(new Date().toISOString())} · ${fmt(payload.total ?? h.records.length, 0)} Einträge`);
-  } catch (error) { if (h.requestGate.isCurrent(requestToken) && generation === state.generation && h === state.history) { h.error = `Verlauf konnte nicht geladen werden: ${error.message}`; h.updatedAt = Date.now(); } }
+  } catch (error) { if (h.requestGate.isCurrent(requestToken) && generation === state.generation && h === state.history) { changed = true; h.cursor = null; h.error = `Verlauf konnte nicht geladen werden: ${error.message}`; h.updatedAt = Date.now(); } }
   finally {
+    const current = h.requestGate.isCurrent(requestToken);
     h.requestGate.finish(requestToken);
     h.loading = h.requestGate.pending;
-    if (generation === state.generation && h === state.history && !h.requestGate.pending) renderHistoryView();
+    if (current && generation === state.generation && h === state.history && !h.requestGate.pending) {
+      if (changed) renderHistoryView({ live: !force });
+      h.disposeChart?.update?.(undefined, historyChartStatus());
+    }
   }
 }
+function liveResetChart() { state.history.disposeChart?.(); state.history.disposeChart = null; }
 function setHistoryTab(tab) {
   state.history.tab = tab;
   document.querySelectorAll('[data-history-tab]').forEach((button) => { const active = button.dataset.historyTab === tab; button.classList.toggle('is-active', active); button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
@@ -600,6 +638,7 @@ function renderScan(scan) {
   $('#scan-btn').textContent = scan.running ? 'Scan läuft …' : 'Netzwerk scannen';
 }
 function render(s) {
+  state.apiConnected = true;
   renderAdapterHealth($('#adapter-health'),s.traffic);
   const visiblePage=$('[data-page]:not([hidden])');captureScroll(visiblePage);
   const testFinished = ['speedTest','stressTest'].some(key => !s[key]?.running && s[key]?.at && (state.value?.[key]?.running || state.value?.[key]?.at !== s[key].at));
@@ -607,6 +646,7 @@ function render(s) {
   renderStorage(s.persistence);
   state.value = s; setGlobalError(s.lastError || ''); renderInterfaces(s); renderConnection(s); renderOverview(s); renderLiveSignal($('#live-signal'), s); renderOverviewDetails(s); renderTargets(s); renderRepeaterConnection(s); renderChart(s); renderWifi(s.network?.wifi); renderDevices(s); renderEvents(s); renderSpeed(s); renderStress(s); renderScan(s.scan); window.dispatchEvent(new CustomEvent('fritzbox-state', { detail: { fritzbox: s.fritzbox || null, targets: s.targets, repeaterHost: s.repeaterHost } })); syncControls();restoreScroll(visiblePage);
   if (testFinished) loadHistory(true);
+  state.history.disposeChart?.update?.(undefined, historyChartStatus());
 }
 async function poll() {
   if (state.polling) return; state.polling = true;
@@ -614,6 +654,7 @@ async function poll() {
   try { const result = await request('/api/state'); if (generation === state.generation && !state.busy.has('reset')) render(result); }
   catch (error) {
     if (generation !== state.generation || state.busy.has('reset')) return;
+    state.apiConnected = false; state.history.disposeChart?.update?.(undefined, historyChartStatus());
     gamesView.connectionLost();
     const conn = $('#connection-state'); conn.className = 'connection offline'; conn.querySelector('span').textContent = 'Server nicht erreichbar';
     setGlobalError(`Die Diagnose-API ist gerade nicht erreichbar. ${error.message}`); $('#monitor-btn').disabled = true; $('#export-btn').disabled = true;
@@ -633,7 +674,7 @@ async function resetMeasurement() {
     await post('/api/reset', {}); state.generation += 1; window.dispatchEvent(new Event('measurement-reset'));
     clearScroll($('#history-view'));
     clearScroll($('#page-history'));
-    state.history = { ...state.history, pingViewport: { range: null }, records: [], loaded: false, loading: false, truncated: false, warnings: [], lastError: '', error: '', updatedAt: null };
+    state.history = { ...state.history, pingViewport: { range: null }, records: [], recordIds: [], cursor: null, loaded: false, loading: false, truncated: false, warnings: [], lastError: '', error: '', updatedAt: null };
     setText('#history-updated', 'Neue Messung wird geladen …'); renderHistoryView();
     await pollOnce(); await loadHistory(true);
     showToast('Neue Messung gestartet. Ziele bleiben erhalten; alte Rohprotokolle liegen im data-Ordner.');
@@ -663,7 +704,6 @@ async function markLag() {
   if (state.busy.has('history-mark')) return; setBusy('history-mark', true);
   try {
     const result = await post('/api/mark', { note: 'Spiellag manuell markiert' });
-    if (result.event) { const event = { type: 'event', ...result.event }; state.history.records.push(event); }
     showToast(result.event?.title || 'Lag-Moment markiert.'); await loadHistory(true);
   } catch (error) { showToast(error.message, true); }
   finally { setBusy('history-mark', false); }
@@ -712,6 +752,7 @@ initPresentation();
 new ResizeObserver(() => { if (state.value) renderChart(state.value); }).observe($('#latency-chart'));
 $('#history-hours').addEventListener('change', (event) => { state.history.hours = Number(event.target.value) || 24; loadHistory(true); });
 $('#history-refresh').addEventListener('click', () => loadHistory(true));
-setInterval(() => loadHistory(false), 15000);
+setInterval(() => { if (!document.hidden && !$('#page-history').hidden) loadHistory(); }, 2000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#page-history').hidden) loadHistory(); });
 poll();
 loadHistory(true);

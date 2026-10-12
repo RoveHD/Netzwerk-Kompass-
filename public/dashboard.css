@@ -5,8 +5,8 @@
 .top-actions { gap: 12px; }
 .topbar .button { min-height: 32px; padding: 4px 12px; }
 .topbar .monitor-tools { max-width: none; width: auto; }
-.topbar .monitor-control { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 0; }
-.topbar .monitor-label { margin: 0 8px 0 0; }
+.topbar .monitor-control { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px; padding: 0; }
+.topbar .monitor-label { flex-basis: auto; margin: 0 8px 0 0; }
 .topbar .measurement-start { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .topbar #reset-btn { font-weight: 400; }
 .connection { display: none; }

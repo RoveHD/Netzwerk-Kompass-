@@ -133,3 +133,37 @@ test('reset API enforces local guards, reports busy and filters history and expo
     const exported=await(await fetch(base+'/api/export')).json();assert.equal(exported.measurementStartedAt,reset.measurementStartedAt);assert.ok(!exported.history.records.some(record=>record.title==='Old period event'));assert.ok(m.history.snapshot(168).records.some(record=>record.title==='Old period event'));
   }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await m.close();}
 });
+
+test('history API serves cursor deltas and resyncs reset, window changes and invalid cursors', async () => {
+  const monitor = new Monitor({});
+  const server = createApp(monitor);
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const history = async (hours = 1, cursor) => (await fetch(`${base}/api/history?hours=${hours}${cursor === undefined ? '' : '&cursor=' + encodeURIComponent(cursor)}`)).json();
+  try {
+    const at = new Date(Date.now() - 1000).toISOString();
+    monitor.log({ type: 'event', at, title: 'original' });
+    const full = await history();
+    assert.equal(full.incremental, false);
+    assert.equal(full.records.length, 1);
+    monitor.log({ type: 'event', at, title: 'same timestamp' });
+    monitor.log({ type: 'event', at: new Date(Date.parse(at) - 1000).toISOString(), title: 'late' });
+    const delta = await history(1, full.cursor);
+    assert.equal(delta.incremental, true);
+    assert.deepEqual(delta.records.map(row => row.title), ['late', 'same timestamp']);
+    assert.equal(delta.total, 3);
+    assert.deepEqual((await history(1, delta.cursor)).records, []);
+    assert.equal((await history(6, delta.cursor)).incremental, false);
+    assert.equal((await history(1, 'invalid')).incremental, false);
+    assert.equal((await history()).records.length, 3);
+    await monitor.reset();
+    const reset = await history(1, delta.cursor);
+    assert.equal(reset.incremental, false);
+    assert.equal(reset.measurementStartedAt, monitor.state.measurementStartedAt);
+    assert.ok(reset.records.every(row => !['original', 'late', 'same timestamp'].includes(row.title)));
+    assert.ok(monitor.history.snapshot().records.some(row => row.title === 'original'));
+    const exported = await (await fetch(base + '/api/export')).json();
+    assert.equal(exported.history.incremental, false);
+    assert.equal(exported.history.measurementStartedAt, reset.measurementStartedAt);
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await monitor.close(); }
+});

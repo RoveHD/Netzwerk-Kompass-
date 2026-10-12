@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialPingSelection, resolvePingSelection, togglePingSelection, selectPingTarget, pingTargetColor, pingTargetDash, createHistoryRequestGate } from '../public/history-selection.js';
+import { initialPingSelection, resolvePingSelection, togglePingSelection, selectPingTarget, pingTargetColor, pingTargetDash, createHistoryRequestGate, mergeHistoryRecords } from '../public/history-selection.js';
 
 const targets = [
   {host:'192.168.1.1',kind:'gateway'},
@@ -48,4 +48,23 @@ test('a changed period supersedes an in-flight history request and manual refres
   gate.finish(first);assert.equal(gate.isCurrent(changed),true);assert.equal(gate.pending,true);
   const refreshed=gate.begin(24,true);assert.ok(refreshed);assert.equal(gate.isCurrent(changed),false);
   gate.finish(changed);assert.equal(gate.pending,true);gate.finish(refreshed);assert.equal(gate.pending,false);
+});
+
+test('live history merges equal timestamps by append identity and preserves unchanged records',()=>{
+  const at = '2026-10-12T10:00:00Z';
+  const first = { type: 'ping', at, results: [] }, second = { type: 'event', at, title: 'Lag' };
+  const full = mergeHistoryRecords({}, { records: [first], recordIds: [1], cursor: 'a' });
+  const frame = { incremental: true, from: '2026-10-12T09:00:00Z', to: '2026-10-12T11:00:00Z', cursor: 'b' };
+  const live = mergeHistoryRecords(full, { ...frame, records: [second], recordIds: [2], total: 2 });
+  assert.deepEqual(live.records, [first, second]);
+  const idle = mergeHistoryRecords(live, { ...frame, records: [], recordIds: [], total: 2 });
+  assert.equal(idle.records, live.records); assert.equal(idle.changed, false);
+  const duplicate = mergeHistoryRecords(live, { ...frame, records: [second], recordIds: [2], total: 2 });
+  assert.deepEqual(duplicate.records, [first, second]);
+  const pruned = mergeHistoryRecords(live, { ...frame, records: [], recordIds: [], removedRecordIds: [1], total: 1 });
+  assert.deepEqual(pruned.records, [second]);
+  const expired = mergeHistoryRecords(live, { ...frame, from: '2026-10-12T10:01:00Z', records: [], recordIds: [], total: 0 });
+  assert.deepEqual(expired.records, []);
+  assert.throws(() => mergeHistoryRecords(live, { ...frame, records: [], recordIds: [], total: 3 }), /neu synchronisiert/);
+  assert.deepEqual(mergeHistoryRecords(live, { records: [], recordIds: [], cursor: 'reset' }).records, []);
 });

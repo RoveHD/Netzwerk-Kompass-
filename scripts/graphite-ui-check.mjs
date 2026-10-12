@@ -92,7 +92,7 @@ try {
     const firstBar = track.querySelector('.live-signal-sample');
     renderLiveSignal(root, current);
     const stable = root.querySelector('a') === track && document.activeElement === track && firstBar.isConnected;
-    const sampleCount = track.children.length;
+    const sampleCount = track.querySelectorAll('.live-signal-sample').length;
     const ringCount = document.querySelectorAll('.overview-status-ring [data-host]').length;
     const ringSize = document.querySelector('.overview-status-ring').getBoundingClientRect();
     const newer = structuredClone(current);
@@ -104,6 +104,10 @@ try {
     const error = track.querySelector('.is-unknown');
     const animationCount = track.getAnimations({ subtree: true }).length;
     const tooltip = loss?.title;
+    const issues = track.querySelector('.live-signal-issues').textContent;
+    renderLiveSignal(root, { ...current, monitoring: false, targets: current.targets.map(target => ({ ...target, samples: [] })) });
+    const empty = track.querySelectorAll('.live-signal-sample').length === 0 && track.querySelector('.live-signal-issues').hidden;
+    const paused = track.dataset.running === 'false' && track.querySelector('.live-signal-phase').textContent === 'Pausiert';
     const testValue = document.createElement('strong');
     document.body.append(testValue); setMeasurement(testValue, '12', 'ms'); setMeasurement(testValue, '24', 'ms');
     const fades = testValue.getAnimations({ subtree: true }).map(animation => animation.effect.getTiming().duration);
@@ -113,13 +117,15 @@ try {
     window.scrollTo(0, 500);
     const top = root.getBoundingClientRect().top;
     window.scrollTo(0, 0);
-    return { stable, sampleCount, ringCount, targets: current.targets.filter(target => target.enabled).length, ringWidth: ringSize.width, ringHeight: ringSize.height, loss: !!loss, error: !!error, tooltip, animationCount, fades, unit, top };
+    return { stable, sampleCount, ringCount, targets: current.targets.filter(target => target.enabled).length, ringWidth: ringSize.width, ringHeight: ringSize.height, loss: !!loss, error: !!error, tooltip, issues, empty, paused, animationCount, fades, unit, top };
   });
   assert.ok(signal.stable, 'Polling ersetzt Live-Link, Balken oder Fokus');
   assert.equal(signal.sampleCount, 60);
   assert.equal(signal.ringCount, signal.targets);
   assert.ok(Math.abs(signal.ringWidth - 48) < .5 && Math.abs(signal.ringHeight - 48) < .5, 'Statusring ist nicht 48px groß');
   assert.ok(signal.loss && signal.error && /Ping-Verlust/.test(signal.tooltip));
+  assert.equal(signal.issues, '1 ohne Antwort · 1 Messfehler');
+  assert.ok(signal.empty && signal.paused, 'Leere oder pausierte Messungen behalten keine aktiven Signale');
   assert.ok(signal.animationCount > 0, 'Neue Live-Werte werden nicht bewegt');
   assert.deepEqual(signal.fades, [150]); assert.equal(signal.unit, 'ms');
   assert.equal(signal.top, 56, 'Live-Leiste bleibt beim Scrollen nicht unter dem Header');
@@ -138,8 +144,21 @@ try {
   await nav('overview');
   results.push('Live-Leiste: 60 Pings, stabile DOM/Fokus, Verlust/Messfehler getrennt, Klick-Verlauf und Scrollposition; 48px-Zielring; 150ms-Wertefade und reduzierte Bewegung geprüft');
 
-  for (const width of [1440, 1024, 768, 390, 320]) {
+  for (const width of [2560, 1440, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1050 });
+    const frame = await page.evaluate(() => {
+      window.scrollTo(0, 500);
+      const header = document.querySelector('.topbar').getBoundingClientRect();
+      const signal = document.querySelector('#live-signal').getBoundingClientRect();
+      const nav = document.querySelector('.app-navigation').getBoundingClientRect();
+      const chart = document.querySelector('.live-signal-chart').getBoundingClientRect();
+      window.scrollTo(0, 0);
+      return { headerBottom: header.bottom, signalTop: signal.top, signalBottom: signal.bottom, navTop: nav.top, chartWidth: chart.width, chartHeight: chart.height };
+    });
+    assert.ok(Math.abs(frame.signalTop - frame.headerBottom) <= 1, `Live-Anzeige überlappt den Header bei ${width}px`);
+    assert.ok(frame.chartWidth <= 320 && frame.chartHeight >= 20, `Live-Verlauf ist nicht kompakt und lesbar bei ${width}px`);
+    if (width > 900) assert.ok(Math.abs(frame.navTop - frame.signalBottom) <= 1, `Sidebar überlappt die Live-Anzeige bei ${width}px`);
+    await page.screenshot({ path: path.join(output, `header-${width}.png`), clip: { x: 0, y: 0, width, height: Math.ceil(frame.signalBottom) } });
     for (const id of tabs) {
       await nav(id);
       await page.locator(`#page-${id}`).waitFor({ state: 'visible' });
@@ -222,6 +241,7 @@ try {
   await nav('overview');
   await page.locator('#monitor-btn').click();
   await page.waitForFunction(() => document.querySelector('#overview-status-title')?.textContent === 'Überwachung pausiert');
+  assert.equal(await page.locator('.live-signal-phase').textContent(), 'Pausiert');
   assert.equal(await page.locator('#overview-status').getAttribute('data-level'), 'muted');
   await page.locator('#monitor-btn').click();
   await page.waitForFunction(() => document.querySelector('#overview-status-title')?.textContent !== 'Überwachung pausiert');
@@ -298,7 +318,7 @@ try {
   assert.ok(loadedAssets.has('/ui-help.js'), 'Tooltip-Modul wurde nicht geladen');
   assert.deepEqual(errors, []);
   assert.deepEqual(failedResponses, []);
-  const report = { fixture: 'synthetische LAN/WLAN-Daten, 120 synthetische Pingpunkte und 8 synthetische Ereignisse; keine Live-Probes', viewportWidths: [1440, 1024, 768, 390, 320], tabs, results, fonts: fontReport, loadedAssets: [...loadedAssets].sort(), requestedPaths: [...requestedPaths].sort(), errors, failedResponses };
+  const report = { fixture: 'synthetische LAN/WLAN-Daten, 120 synthetische Pingpunkte und 8 synthetische Ereignisse; keine Live-Probes', viewportWidths: [2560, 1440, 1024, 768, 390, 320], tabs, results, fonts: fontReport, loadedAssets: [...loadedAssets].sort(), requestedPaths: [...requestedPaths].sort(), errors, failedResponses };
   await writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {

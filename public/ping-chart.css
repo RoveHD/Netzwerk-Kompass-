@@ -2,7 +2,8 @@
 .ping-chart-status{font-size:14px;color:var(--muted)}
 .ping-chart-controls{display:flex;gap:8px;flex-wrap:wrap}
 .ping-chart-controls .button{min-width:40px;min-height:40px;padding:0 16px;font-size:18px}
-.ping-chart-controls .button:last-child{font-size:13px}
+.ping-chart-controls #ping-chart-reset,.ping-chart-controls #ping-chart-live{font-size:13px}
+.ping-chart-controls #ping-chart-live[data-live-state="active"]{border-color:var(--teal);color:var(--teal);background:rgba(63,193,176,.1)}
 .ping-chart svg{min-width:0;touch-action:pan-y;user-select:none}
 .ping-chart svg.is-zoomed{cursor:grab}
 .ping-chart svg.is-dragging{cursor:grabbing}
@@ -10,7 +11,7 @@
 .ping-chart-frame{position:relative;width:100%;min-width:0}
 .ping-chart-crosshair{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;pointer-events:none}
 .ping-chart-crosshair-dot{stroke:var(--muted);stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}
-.ping-chart-tooltip-html{position:absolute;z-index:2;width:min(420px,calc(100% - 16px));max-height:min(44vh,300px);overflow:auto;overscroll-behavior:contain;padding:8px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);box-shadow:none;overflow-wrap:anywhere;font-size:12px;line-height:1.4;scrollbar-gutter:stable}
+.ping-chart-tooltip-html{position:absolute;z-index:2;width:min(420px,calc(100% - 16px));max-height:min(44vh,300px);overflow:auto;overscroll-behavior:contain auto;padding:8px 16px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);box-shadow:none;overflow-wrap:anywhere;font-size:12px;line-height:1.4;scrollbar-gutter:stable}
 .ping-chart-tooltip-html[hidden]{display:none}
 .ping-chart-tooltip-heading{display:block;margin-bottom:8px;color:var(--muted);font-size:12px}
 .ping-chart-tooltip-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;padding:8px 0;border-top:1px solid var(--line)}
