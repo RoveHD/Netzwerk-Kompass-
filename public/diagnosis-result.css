@@ -1,0 +1,21 @@
+.ai-diagnosis{margin-top:16px;min-width:0;overflow-wrap:anywhere;font-size:14px;line-height:1.65;font-family:var(--font-ui);color:var(--text)}
+.ai-diagnosis-lead{padding:24px 24px;border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:6px;background:var(--panel)}
+.ai-diagnosis-eyebrow{margin:0 0 8px;color:var(--orange);font-size:12px;letter-spacing:0;font-weight:600}
+.ai-diagnosis-cause{font-size:18px;line-height:1.45;font-weight:600;max-width:900px}
+.ai-diagnosis-cause p{margin:0}.ai-diagnosis-cause strong{font-weight:600}
+.ai-diagnosis-confidence{margin-top:16px;color:var(--muted);font-size:13px;line-height:1.5}
+.ai-diagnosis h4{font-size:14px;margin:0 0 8px}.ai-diagnosis h5{font-size:14px;margin:16px 0 8px}
+.ai-diagnosis-path{margin:16px 0}.ai-diagnosis-segment{padding:8px 16px;margin:8px 0;border:1px solid var(--line);border-left:3px solid var(--subtle);border-radius:6px;background:var(--panel);font-size:14px;line-height:1.55}
+.ai-diagnosis-segment[data-assessment=suspect]{border-left-color:var(--orange);background:var(--panel)}
+.ai-diagnosis-segment[data-assessment=clear]{border-left-color:var(--green)}
+.ai-diagnosis-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;margin-top:16px}
+.ai-diagnosis-card{padding:16px 16px;border:1px solid var(--line);border-radius:6px;background:var(--panel);font-size:14px;line-height:1.65}
+.ai-diagnosis-next{border-color:var(--line);background:var(--panel)}.ai-diagnosis-next h4{color:var(--muted)}
+.ai-diagnosis-card p{margin:8px 0}.ai-diagnosis ul,.ai-diagnosis ol{margin:8px 0;padding-left:24px}.ai-diagnosis li+li{margin-top:8px}
+.ai-diagnosis-uncertainty,.ai-diagnosis-legacy-note{margin:16px 0;color:var(--muted);font-size:13px;line-height:1.6}
+.ai-diagnosis-details{margin-top:16px;border-top:1px solid var(--line);padding-top:8px}
+.ai-diagnosis-details summary{padding:8px 0;color:var(--teal);font-weight:600;font-size:13px;cursor:pointer}
+.ai-diagnosis-full{max-width:950px;color:var(--muted);font:400 14px/1.5 var(--font-ui)}
+.ai-diagnosis-full p{margin:8px 0}.ai-diagnosis code{font:inherit;color:var(--muted)}
+.ai-archive-meta{color:var(--muted);font-size:12px;line-height:1.6;white-space:pre-line;overflow-wrap:anywhere}
+@media(max-width:650px){.ai-diagnosis-grid{grid-template-columns:1fr}.ai-diagnosis-lead{padding:16px}.ai-diagnosis-cause{font-size:18px}.ai-diagnosis-card{padding:16px}.ai-diagnosis-segment{padding:8px 16px}}

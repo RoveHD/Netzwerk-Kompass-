@@ -1,0 +1,242 @@
+/* Fachansichten: ruhige Diagnoseoberflaechen auf Basis der Shell-Tokens. */
+
+/* Verlauf und Messdiagramme */
+.history-panel {
+  margin:24px 0 24px;
+  padding:24px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:6px;
+  box-shadow:none;
+}
+.history-heading { align-items:center; gap:24px; margin-bottom:24px; }
+.history-heading h2 { font-size:28px; line-height:1.25; letter-spacing:0; }
+.history-heading p:not(.eyebrow) { font-size:14px; }
+.history-controls { flex-wrap:wrap; background:var(--panel-subtle); border-color:var(--line); border-radius:6px; }
+.history-controls label { color:var(--muted); font-size:13px; }
+.history-controls select, .history-filter select, .history-controls .button { min-height:38px; font-size:13px; }
+.history-controls select { color:var(--text); border-color:var(--line); background:var(--panel-raised); }
+.history-tabs { gap:8px; margin-bottom:24px; border-color:var(--line); }
+.history-tab { padding:8px 16px; border-bottom-width:2px; color:var(--muted); font-size:13px; }
+.history-tab:hover { background:var(--panel-raised); }
+.history-tab.is-active, .history-tab[aria-selected="true"] { color:var(--accent); background:var(--accent-soft); border-color:var(--accent); border-radius:6px 6px 0 0; box-shadow:none; }
+.history-tab[aria-selected="true"]::before { color:var(--accent); }
+.history-heading .eyebrow { display:none; }
+.history-section-title { margin:24px 0 16px; }
+.history-section-title h3 { font-size:18px; letter-spacing:0; }
+.history-section-title p { font-size:13px; }
+.history-filter { flex-wrap:wrap; }
+.history-filter label { font-size:13px; }
+.history-filter select { min-width:min(250px, 100%); }
+.history-metrics { gap:16px; }
+.history-metric { padding:16px 16px; border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.history-metric span, .history-metric small { color:var(--muted); font-size:12px; }
+.history-metric strong { font-size:18px; font-variant-numeric:tabular-nums; }
+.history-chart { padding:16px 16px 8px; border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.history-chart svg { height:clamp(260px, 30vw, 360px); }
+.ping-chart-tooltip-html { border-color:var(--line); border-radius:6px; background:var(--panel-raised); color:var(--text); box-shadow:none; }
+.ping-chart-tooltip-heading { color:var(--accent); }
+.ping-chart-tooltip-row { border-color:var(--line); }
+.ping-chart-tooltip-sample-time { color:var(--muted); }
+.history-grid { stroke:var(--line); stroke-dasharray:none; }
+.history-axis-label { fill:var(--muted); font-size:13px; }
+.history-legend { gap:16px; color:var(--text); font-size:13px; }
+.history-empty { border-color:var(--line); border-radius:6px; color:var(--muted); background:var(--panel-subtle); }
+.history-error, .history-notice, .history-service-message { border-radius:6px; }
+.history-error { border-color:var(--line); background:var(--panel); color:var(--red); }
+.history-notice { border-color:var(--line); background:var(--orange-soft); color:var(--orange); }
+.history-service-message { border-color:var(--line); background:var(--panel-raised); color:var(--text); }
+.history-list { gap:8px; }
+.history-row { grid-template-columns:minmax(145px, 190px) minmax(130px, .45fr) minmax(0, 1fr); gap:16px; padding:16px 16px; border-color:var(--line); border-radius:6px; background:var(--panel-subtle); font-size:13px; }
+.history-row time, .history-row span { color:var(--muted); }
+.history-row strong { font-size:14px; }
+.history-row.history-loss, .history-row.history-warning { border-left-width:3px; }
+.history-table-wrap { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.history-table { font-size:13px; }
+.history-table th { padding:8px 16px; color:var(--muted); font-size:12px; }
+.history-table td { padding:8px 16px; font-size:13px; }
+.scan-history, .speed-history-row { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.scan-history summary { padding:16px 16px; }
+.speed-history-row { gap:16px; padding:16px 16px; }
+.speed-history-time time, .speed-bar-row { font-size:12px; }
+.speed-history-time strong { font-size:14px; font-variant-numeric:tabular-nums; }
+.speed-bar-track { background:var(--line-soft); }
+.speed-history-pings strong { font-size:16px; font-variant-numeric:tabular-nums; }
+.history-footer { border-color:var(--line); color:var(--muted); }
+
+/* FRITZ!Box, Mesh und Routerdaten */
+.fritzbox-panel { padding:24px; border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+.fritzbox-panel .eyebrow { color:var(--accent); }
+.fritzbox-login { padding:16px; border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.fritzbox-login-fields label, .fritzbox-user-option label { color:var(--muted); }
+.fritzbox-login-fields input, .fritzbox-user-option input { border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.fritzbox-guidance, .fritzbox-login-help, .fritzbox-user-option p { color:var(--muted); font-size:13px; line-height:1.55; }
+.fritzbox-user-option { border-color:var(--line); }
+.fritzbox-user-option summary { color:var(--accent); }
+.fritzbox-actions { flex-wrap:wrap; }
+.fritzbox-facts { gap:8px; }
+.fritzbox-fact { padding:16px 16px; border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.fritzbox-fact span { color:var(--muted); font-size:12px; }
+.fritzbox-fact strong { font-size:16px; font-variant-numeric:tabular-nums; }
+.fritzbox-section-heading h3 { font-size:16px; }
+.fritzbox-section-heading p, .fritzbox-empty { color:var(--muted); font-size:13px; }
+.fritzbox-empty { border-color:var(--line); border-radius:6px; }
+.fritzbox-table-wrap { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.fritzbox-table { font-size:13px; }
+.fritzbox-table th { padding:8px 16px; border-color:var(--line); color:var(--muted); font-size:12px; }
+.fritzbox-table td { padding:8px 16px; border-color:var(--line-soft); color:var(--text); font-size:13px; }
+.fritzbox-host-action { background:var(--panel-raised); color:var(--text); }
+.fritzbox-warnings { border-color:var(--line); border-radius:6px; background:var(--orange-soft); color:var(--orange); }
+.fritzbox-log { max-height:min(42vh, 380px); border-color:var(--line); border-radius:6px; background:var(--panel-subtle); color:var(--text); font-size:12px; }
+.mesh-topology { margin:16px 0 24px; }
+.mesh-topology-note, .mesh-topology-summary { color:var(--muted); font-size:13px; }
+.mesh-topology-scroll { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.mesh-link { stroke:var(--muted); }
+.mesh-link-wlan { stroke:var(--accent); }
+.mesh-link-label, .mesh-link-rate { fill:var(--text); stroke:var(--panel-subtle); }
+.mesh-node { border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.mesh-node-master { border-color:var(--accent); }
+.mesh-node-role, .mesh-node-address { color:var(--muted); }
+.mesh-topology-detail { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.mesh-history-control { gap:8px; }
+.fritzbox-capabilities summary { color:var(--accent); }
+.router-tabs { border-color:var(--line); }
+.router-tabs button { border-radius:6px; color:var(--muted); font-size:13px; }
+.router-tabs button.is-active, .router-tabs button[aria-selected="true"] { background:var(--accent-soft); border-color:var(--line); color:var(--muted); }
+.mesh-node.is-selected { outline-color:var(--accent); }
+
+/* Geschwindigkeitstests und kontrollierte Belastung */
+.speed-panel { display:grid; border-color:var(--line); border-radius:6px; background:var(--panel); }
+.speed-copy .eyebrow { color:var(--muted); }
+.speed-copy h2 { font-size:18px; }
+.speed-copy p:not(.eyebrow) { font-size:13px; }
+.speed-panel > #speed-btn { min-height:40px; }
+.speed-options label, .stress-controls label { color:var(--muted); font-size:13px; }
+.speed-options select, .stress-controls select { min-height:38px; border-radius:6px; border-color:var(--line); background:var(--panel-raised); }
+.speed-metric { min-height:142px; padding:16px; border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.speed-metric > span { color:var(--muted); font-size:12px; letter-spacing:0; }
+.speed-metric > strong { font-size:28px; font-variant-numeric:tabular-nums; }
+.speed-metric > small { color:var(--muted); font-size:14px; }
+.speed-download > strong { color:var(--teal); }
+.speed-upload > strong { color:var(--accent); }
+.speed-ping > strong { color:var(--text); font-size:18px; font-variant-numeric:tabular-nums; }
+.speed-progress-track { background:var(--line-soft); border-radius:6px; }
+.speed-progress-track i { background:var(--teal); }
+.stress-panel { border-color:var(--line); }
+.stress-metrics > div { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.stress-metrics span { color:var(--muted); }
+.stress-metrics strong { font-size:28px; font-variant-numeric:tabular-nums; }
+
+/* Spielmessung */
+.game-overview { border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.game-heading h2 { font-size:18px; }
+.game-muted, .game-help { color:var(--muted); font-size:13px; }
+.game-selection label { color:var(--muted); font-size:13px; }
+.game-selection select, .game-custom-form input { border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.game-tracking-mode { color:var(--teal); font-size:13px; }
+.game-capture-heading { border-color:var(--line); }
+.game-counters { gap:8px; }
+.game-counter, .game-proof > div, .game-network-card { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.game-counter span, .game-counter small { color:var(--muted); }
+.game-counter strong { font-size:18px; font-variant-numeric:tabular-nums; }
+.game-proof > div:last-child { border-color:var(--line); }
+.game-proof p { color:var(--muted); font-size:13px; }
+.game-chart-wrap { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.game-chart-wrap svg { height:190px; }
+.game-chart-legend { font-size:12px; }
+.game-chart-legend span:first-child { color:var(--teal); }
+.game-chart-legend span:last-child { color:var(--accent); }
+.game-network-card span { font-size:14px; font-variant-numeric:tabular-nums; }
+.game-network-card small { color:var(--muted); font-size:12px; }
+.game-custom-form label { color:var(--muted); font-size:13px; }
+.game-custom-row { border-color:var(--line); }
+.game-custom-row code { color:var(--muted); }
+.game-section-title { font-size:16px; }
+.game-endpoint-table, .game-session-table { min-width:620px; }
+.game-endpoint-table th, .game-endpoint-table td, .game-session-table th, .game-session-table td { padding:8px 8px; font-size:13px; }
+.game-endpoint-table td:nth-child(2) { font-size:12px; }
+.game-comparison-table th, .game-comparison-table td { padding:8px 8px; font-size:12px; }
+.game-comparison-table th { background:var(--panel-raised); }
+.game-comparison-caveat { background:var(--panel-subtle); }
+
+/* KI-Auswertung und gespeicherte Diagnosen */
+.ai-panel { border:1px solid var(--line); border-radius:6px; background:var(--panel); }
+.ai-panel .eyebrow { color:var(--accent); }
+.ai-subtitle, .ai-consent, .ai-recommendation, .ai-login-help { color:var(--muted); font-size:13px; line-height:1.6; }
+.ai-consent { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.ai-connection { color:var(--text); border-color:var(--line); }
+.ai-login-help { border-color:var(--line); border-radius:6px; background:var(--orange-soft); color:var(--orange); }
+.ai-login-help a { color:var(--accent); }
+.ai-start-row { flex-wrap:wrap; }
+.ai-start-row label { color:var(--muted); font-size:13px; }
+.ai-start-row select { min-height:38px; border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.ai-report-details { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.ai-report-details summary { color:var(--accent); font-size:13px; }
+.ai-report-tools { flex-wrap:wrap; }
+.ai-report-preview, .ai-result { max-height:min(52vh, 520px); border-color:var(--line); border-radius:6px; background:var(--panel); color:var(--text); font-size:13px; }
+.ai-result-wrap { border-color:var(--line); }
+.ai-result-heading h3 { font-size:18px; }
+.ai-result-heading span { color:var(--muted); }
+.ai-error { border-radius:6px; }
+.ai-archive { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
+.ai-archive h3 { margin:0 0 8px; font-size:16px; }
+.ai-archive > label { display:block; margin:16px 0 8px; color:var(--muted); font-size:13px; }
+.ai-archive select { max-width:100%; border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.ai-archive-tools { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.ai-archive-result { max-height:min(52vh, 520px); overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.ai-diagnosis-lead { border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
+.ai-diagnosis-cause { font-size:18px; }
+.ai-diagnosis-confidence { color:var(--muted); }
+.ai-diagnosis-segment, .ai-diagnosis-card { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
+.ai-diagnosis-segment[data-assessment="suspect"] { border-left-color:var(--orange); background:var(--orange-soft); }
+.ai-diagnosis-next { border-color:var(--line); background:var(--panel-raised); }
+.ai-diagnosis-next h4 { color:var(--teal); }
+.ai-diagnosis-details { border-color:var(--line); }
+.ai-diagnosis-details summary { color:var(--accent); }
+.ai-diagnosis-full { color:var(--text); }
+
+/* Speicherung, Verlaufstabellen und kompakte Kontrollansichten */
+#session-list { max-height:min(58vh, 620px); overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+#session-list table { min-width:620px; font-size:13px; }
+#session-list th, #session-list td { padding:8px 8px; }
+.panel-subtitle, .honesty-note { color:var(--muted); font-size:13px; line-height:1.6; }
+
+@media (max-width: 900px) {
+  .history-heading { align-items:flex-start; flex-direction:column; }
+  .history-controls { width:100%; }
+  .history-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .fritzbox-facts { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .speed-results { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .speed-ping { grid-column:1 / -1; }
+}
+@media (max-width: 600px) {
+  .history-panel, .fritzbox-panel { padding:16px; }
+  .history-heading h2 { font-size:18px; }
+  .history-controls { align-items:stretch; }
+  .history-controls label { flex:1 1 100%; }
+  .history-controls select { width:100%; }
+  .history-controls .button { flex:1; }
+  .history-metrics, .fritzbox-facts, .speed-results { grid-template-columns:minmax(0, 1fr); }
+  .speed-ping { grid-column:auto; }
+  .history-row { grid-template-columns:minmax(0, 1fr); gap:8px; }
+  .speed-history-row { grid-template-columns:minmax(0, 1fr); }
+  .history-footer { align-items:flex-start; flex-direction:column; }
+  .history-footer span:last-child { text-align:left; }
+  .fritzbox-login-fields { grid-template-columns:minmax(0, 1fr); }
+  .fritzbox-login-fields .button { width:100%; }
+  .fritzbox-actions { align-items:flex-start; flex-direction:column; }
+  .fritzbox-actions > div { flex-wrap:wrap; }
+  .game-counters { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .game-selection select { flex-basis:100%; }
+}
+@media (max-width: 390px) {
+  .history-panel, .fritzbox-panel { padding:16px 8px; }
+  .history-tabs { margin-inline:-8px; }
+  .history-tab { padding:8px 8px; font-size:12px; }
+  .history-chart { padding:8px 8px 8px; }
+  .history-chart svg { height:250px; }
+  .history-table { min-width:580px; }
+  .fritzbox-facts { grid-template-columns:minmax(0, 1fr); }
+  .game-counters { grid-template-columns:minmax(0, 1fr); }
+  .speed-metric { min-height:112px; }
+}

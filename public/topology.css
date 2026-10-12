@@ -1,0 +1,24 @@
+.mesh-topology { min-width:0; max-width:100%; margin:16px 0 24px; }
+.mesh-topology-note, .mesh-topology-summary { color:var(--muted); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.mesh-topology-scroll { width:100%; max-width:100%; max-height:560px; overflow:auto; border:1px solid var(--border, var(--line)); border-radius:6px; background:var(--panel); }
+.mesh-topology-canvas { position:relative; }
+.mesh-topology-canvas > svg { position:absolute; inset:0; }
+.mesh-link { fill:none; stroke:var(--muted); stroke-width:2; }
+.mesh-link-wlan { stroke:var(--muted); stroke-dasharray:6 4; }
+.mesh-link-disconnected { stroke:var(--muted); opacity:.6; stroke-dasharray:3 7; }
+.mesh-link-label, .mesh-link-rate { fill:var(--muted); font-size:12px; paint-order:stroke; stroke:var(--muted); stroke-width:5px; stroke-linejoin:round; }
+.mesh-link-rate { font-size:12px; }
+.mesh-node { position:absolute; width:220px; height:90px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; padding:16px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--muted); text-align:left; cursor:pointer; overflow:hidden; }
+.mesh-node strong, .mesh-node-address { display:block; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mesh-node-role { font-size:12px; color:var(--muted); letter-spacing:0; }
+.mesh-node-address { font-size:12px; color:var(--muted); }
+.mesh-node-master { border-color:var(--line); }
+.mesh-node.is-selected { outline:2px solid var(--line); outline-offset:2px; }
+.mesh-node:focus-visible, .mesh-topology-scroll:focus-visible { outline:3px solid var(--line); outline-offset:2px; }
+.mesh-topology-detail { margin-top:16px; padding:16px; border:1px solid var(--border, var(--line)); border-radius:6px; overflow-wrap:anywhere; }
+.mesh-topology-detail h4 { margin:0 0 8px; }
+.mesh-topology-detail p { margin:8px 0; font-size:13px; line-height:1.6; }
+.mesh-history-control { display:grid; gap:8px; margin:16px 0; min-width:0; }
+.mesh-history-control select { max-width:100%; min-width:0; width:100%; }
+.fritzbox-capabilities { margin:16px 0; min-width:0; }
+.fritzbox-capabilities summary { cursor:pointer; color:var(--muted); }

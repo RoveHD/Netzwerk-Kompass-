@@ -1,0 +1,10 @@
+data/
+Netzwerk-Kompass-Daten/
+dist/
+runtime/
+node_modules/
+test-artifacts/
+theme-backups/
+*.log
+.env
+.env.*

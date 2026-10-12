@@ -1,0 +1,18 @@
+{
+  "name": "netzwerk-kompass",
+  "version": "1.0.4",
+  "private": true,
+  "type": "module",
+  "description": "Lokale Windows-Heimnetzdiagnose ohne Cloud-Konto",
+  "engines": {
+    "node": ">=20.3"
+  },
+  "config": {
+    "electronVersion": "44.3.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check lib/runtime.js && node --check lib/monitor.js && node --check lib/probes.js && node --check lib/analysis.js && node --check lib/history.js && node --check lib/fritzbox.js && node --check lib/speedtest.js && node --check lib/stress-test.js && node --check lib/report.js && node --check lib/ai-analysis.js && node --check lib/codex.js && node --check public/app.js && node --check public/overview.js && node --check public/fritzbox.js && node --check public/ai.js && node --check public/diagnosis-result.js && node --check public/navigation.js && node --check public/history-selection.js && node --check public/ping-chart.js && node --check public/ping-statistics.js && node --check public/topology.js && node --check desktop/main.cjs && node --check desktop/policy.cjs && node --check desktop/preload.cjs && node --check desktop/lag-hotkey.cjs && node --check desktop/native-hotkey.cjs && node --check public/lag-hotkey.js && node --check lib/startup.js && node --check lib/session-store.js && node --check lib/device-traffic.js && node --check public/storage.js && node --check public/traffic-history.js && node --check public/scroll-state.js && node --check public/speedtest-ui.js && node --check public/speed-history.js && node --check public/speedtest-options.js && node --check public/stress-test-ui.js && node --check lib/game-detection.js && node --check lib/game-packets.js && node --check lib/game-report.js && node --check public/games.js && node --check public/network-health.js && node --check public/game-comparison.js && node --check public/lag-incidents.js && node --check lib/adapter-health.js && node --check public/ui-help.js && node --check public/ui-presentation.js && node --check public/live-signal.js && node --check public/overview-details.js"
+  }
+}

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="api-token" content="__API_TOKEN__">
+  <meta name="theme-color" content="#16181A">
+  <title>Netzwerk-Kompass</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="64x64" href="/brand/compass-64.png">
+  <link rel="apple-touch-icon" href="/brand/compass-256.png">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/games.css">
+  <link rel="stylesheet" href="/overview.css">
+  <link rel="stylesheet" href="/topology.css">
+  <link rel="stylesheet" href="/speedtest.css">
+  <link rel="stylesheet" href="/diagnosis-result.css">
+  <link rel="stylesheet" href="/network-health.css">
+  <link rel="stylesheet" href="/game-comparison.css">
+  <link rel="stylesheet" href="/ping-chart.css">
+  <link rel="stylesheet" href="/lag-incidents.css">
+  <link rel="stylesheet" href="/workspace.css">
+  <link rel="stylesheet" href="/workspace-panels.css">
+  <link rel="stylesheet" href="/graphite.css">
+  <link rel="stylesheet" href="/live-signal.css">
+  <link rel="stylesheet" href="/dashboard.css">
+  <script type="module" src="/app.js"></script>
+  <script type="module" src="/ui-help.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Zum Inhalt springen</a>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="Netzwerk-Kompass Übersicht">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M16 3 29 16 16 29 3 16Z" stroke="currentColor" stroke-width="1.5"/><path d="m20.5 11.5-3 6-6 3 3-6Z" fill="currentColor"/><path d="M16 3v4m13 9h-4M16 29v-4M3 16h4" stroke="currentColor" stroke-width="1.5"/></svg></span>
+      <span><strong>Netzwerk-Kompass</strong></span>
+    </a>
+    <div class="top-actions">
+      <div class="monitor-tools"><div class="monitor-control"><span class="monitor-label"><span id="monitor-indicator" class="status-dot"></span><span id="monitor-text">Überwachung wird geladen</span></span><button id="monitor-btn" class="button button-primary" type="button" disabled>Überwachung starten</button><button id="reset-btn" class="button button-secondary" type="button" title="Alle Messwerte und Verläufe ab jetzt neu beginnen. Ziele und alte Rohprotokolle bleiben erhalten." disabled>Reset · ab jetzt</button></div><p id="measurement-start" class="measurement-start" aria-live="polite"></p></div>
+      <span id="connection-state" class="connection"><i></i><span>Verbinde …</span></span>
+      <button id="export-btn" aria-label="Messdaten exportieren" class="button button-quiet" type="button" disabled><svg class="control-glyph" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 12v5h14v-5"/></svg><span>Export</span></button>
+      <button id="shutdown-btn" class="button button-quiet shutdown-button" type="button" aria-label="Netzwerk-Kompass beenden" disabled><span class="shutdown-label">Beenden</span><svg class="control-glyph" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1v8M5 4a7 7 0 1 0 10 0"/></svg></button>
+    </div>
+  </header>
+  <div id="live-signal" aria-label="Live-Ping-Verlauf"></div>
+  <nav class="app-navigation" aria-label="Hauptbereiche">
+    <span class="nav-group-label">Arbeitsbereich</span>
+    <a href="#overview" data-nav-page="overview" aria-controls="page-overview" class="is-active" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8V3h5m10 0h5v5M2 16v5h5m10 0h5v-5M1 12h5l3-6 5 12 3-6h6"/><path d="M12 2v2m0 16v2"/></svg><span>Übersicht</span></a>
+    <a href="#devices" data-nav-page="devices" aria-controls="page-devices"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2h8v6H8zM2 17h6v5H2zm14 0h6v5h-6zM12 8v5M5 17v-4h14v4"/><path d="M11 5h2M4 20h2m12 0h2"/></svg><span>Geräte &amp; Repeater</span></a>
+    <a href="#games" data-nav-page="games" aria-controls="page-games"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7H5l-3 5v8h3l4-4h6l4 4h3v-8l-3-5h-3M8 3l4 5 4-5M12 8v5M5 11v4m-2-2h4M17 11h.01M20 14h.01"/></svg><span>Spiele &amp; Pakete</span></a>
+    <a href="#history" data-nav-page="history" aria-controls="page-history"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v19h19M7 15l4-7 4 4 6-8M7 21v-2m7 2v-2m7 2v-2M2 8h3m-3 6h3"/><circle cx="11" cy="8" r="1.5"/><circle cx="15" cy="12" r="1.5"/></svg><span>Verlauf</span></a>
+    <span class="nav-group-label">Analyse</span>
+    <a href="#router" data-nav-page="router" aria-controls="page-router"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h18v8H3zM6 13V8m12 5V8M6 17h6m4 0h2M6 4l3 3m9-3-3 3M12 1v5"/><path d="M6 21v2m12-2v2"/></svg><span>FRITZ!Box &amp; Mesh</span></a>
+    <a href="#tests" data-nav-page="tests" aria-controls="page-tests"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v10m-3 0h6l-3 4-3-4m17-10v10m-3 0h6l-3 4-3-4M5 16v3h14v-3M12 7v15m-2-18h4M9 22h6"/></svg><span>Tests &amp; WLAN</span></a>
+    <a href="#ai" data-nav-page="ai" aria-controls="page-ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h11v5h7v13H3zM14 3l7 5M6 16l3-5 4 6 3-4h3M6 7h4"/><circle cx="13" cy="17" r="1.5"/></svg><span>KI-Auswertung</span></a>
+    <span class="nav-group-label">Verwaltung</span>
+    <a href="#settings" data-nav-page="settings" aria-controls="page-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v6m0 5v9M12 2v11m0 5v4M19 2v3m0 5v12M2 8h6v5H2zm7 5h6v5H9zm7-8h6v5h-6z"/></svg><span>Einstellungen</span></a>
+  </nav>
+  <main id="main" class="layout" tabindex="-1">
+<div id="global-error" class="global-error" role="alert" hidden></div>
+<section class="welcome-row" aria-labelledby="page-title">
+      <div><h1 id="page-title" tabindex="-1">Übersicht</h1><p class="intro">Status, Verbindungsqualität und aktuelle Auffälligkeiten.</p></div>
+      <section id="overview-status" class="overview-status" data-level="muted" aria-label="Netzwerkstatus">
+  <span id="overview-status-icon" class="overview-status-icon" aria-hidden="true">·</span>
+  <div class="overview-status-copy" role="status"><div class="overview-status-title-row"><strong id="overview-status-title">Messwerte werden geladen</strong><button id="overview-status-info" class="info-tip" type="button" aria-label="Weitere Informationen" aria-expanded="false">ⓘ</button></div><p id="overview-target-count"></p><p id="overview-status-detail">Warte auf die erste Messung.</p></div>
+  <a id="overview-status-action" class="button button-secondary" href="#devices">Messziele ansehen</a>
+</section>
+    </section>
+<div id="page-overview" class="app-page" data-page="overview">
+
+<section class="summary-grid" aria-label="Aktuelle Messwerte">
+  <article class="summary-card"><div class="summary-head"><svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h5l3-8 4 16 3-8h5"/></svg><span>Internet-Ping</span></div><div class="summary-reading"><strong id="internet-value" class="summary-value">–</strong><svg id="ping-sparkline" class="metric-sparkline" role="img" aria-label="Letzte Ping-Messwerte"></svg></div><span id="internet-status" class="pill pill-muted">Warte auf Daten</span><span id="internet-detail" class="summary-detail">Warte auf Messwerte</span></article>
+  <article class="summary-card"><div class="summary-head"><svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13m-5-5 5 5 5-5M4 18v3h16v-3"/></svg><span>Download</span></div><div class="summary-reading"><strong id="download-value" class="summary-value">–</strong><svg id="download-sparkline" class="metric-sparkline" role="img" aria-label="Letzte Download-Messwerte"></svg></div><span id="traffic-interface" class="summary-detail">Schnittstelle auswählen</span></article>
+  <article class="summary-card"><div class="summary-head"><svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V8m-5 5 5-5 5 5M4 6V3h16v3"/></svg><span>Upload</span></div><div class="summary-reading"><strong id="upload-value" class="summary-value">–</strong><svg id="upload-sparkline" class="metric-sparkline" role="img" aria-label="Letzte Upload-Messwerte"></svg></div><span class="summary-detail">Aktueller PC-Datenverkehr</span></article>
+  <article class="summary-card"><div class="summary-head"><svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a15 15 0 0 1 18 0M6 11a10 10 0 0 1 12 0M9 15a5 5 0 0 1 6 0M12 19h.01"/></svg><span>Ping-Verlust</span></div><div class="summary-reading"><strong id="loss-value" class="summary-value">– %</strong><svg id="loss-sparkline" class="metric-sparkline" role="img" aria-label="Letzte Ping-Verluste"></svg></div><span id="loss-status" class="pill pill-muted">Noch nicht gemessen</span><span id="loss-detail" class="summary-detail">Kein Messfenster</span></article>
+</section>
+<div class="overview-analysis-grid">
+<section class="panel timeline-panel" aria-labelledby="timeline-heading">
+      <div class="panel-heading"><div><h2 id="timeline-heading">Latenz im Zeitverlauf</h2></div><div class="legend"><span><i class="legend-dot teal"></i>Antwort</span><span><i class="legend-dot orange-dot"></i>Verlust</span><span><i class="legend-dot error-dot"></i>Messfehler</span><span><i class="legend-dot threshold-dot"></i>30 ms</span><span id="timeline-range">Letzte Messwerte</span></div></div>
+      <div class="chart-wrap"><svg id="latency-chart" viewBox="0 0 900 190" preserveAspectRatio="none" role="img" aria-label="Latenzverlauf; fehlende Punkte markieren Paketverlust"><text x="450" y="96" text-anchor="middle" class="chart-empty">Warte auf Messwerte</text></svg></div>
+      <p id="chart-note" class="chart-note"></p>
+      <a class="overview-history-link" href="#history">Alle Ziele im Verlauf vergleichen </a>
+    </section>
+<section class="panel overview-quality-panel"><div class="panel-heading"><h2>Verbindungsqualität</h2><button class="info-tip" type="button" data-help="Werte des auffälligsten aktiven Internetziels; lokale Messfehler werden nicht als Ping-Verlust gewertet." aria-label="Informationen zur Verbindungsqualität">ⓘ</button></div><div id="overview-quality"></div><div class="overview-router"><span>Router</span><strong id="router-value" class="measurement">–</strong><span id="router-status" class="pill pill-muted">Warte auf Daten</span><span id="router-detail" class="sr-only">Noch keine Schnittstelle</span></div><div class="overview-insights">
+
+<div class="history-mark-row"><button id="history-mark" class="button button-mark" type="button">Lag markieren</button><div class="lag-hotkey-controls"><button id="lag-hotkey-edit" class="text-button" type="button" disabled>Hotkey festlegen</button><span id="lag-hotkey-status" role="status" hidden></span></div></div>
+</div>
+</section>
+</div>
+
+
+<div class="overview-support-grid"><section class="panel overview-traffic-panel"><div class="panel-heading"><h2>Download / Upload</h2><div class="legend"><span><i class="legend-dot teal"></i>Download</span><span><i class="legend-dot upload-dot"></i>Upload</span></div></div><svg id="overview-traffic-chart" role="img" aria-label="Gemessener PC-Datenverkehr im Zeitverlauf"></svg><a class="text-button" href="#history">Datenverkehr im Verlauf</a></section><section class="panel overview-tests-panel"><div class="panel-heading"><h2>Letzte Messungen</h2></div><div id="overview-recent-tests"></div><a class="text-button" href="#tests">Tests öffnen</a></section></div>
+<div class="overview-bottom-grid"><section class="panel overview-devices-panel"><div class="panel-heading"><h2>Geräte im Netzwerk</h2><a class="text-button" href="#devices">Alle Geräte</a></div><div id="overview-devices"></div></section><section class="panel events-panel" aria-labelledby="events-heading"><div class="panel-heading"><div><h2 id="events-heading">Ereignisse</h2></div><span id="event-count" class="count-badge">0</span></div><div id="events-list" class="events-list"><div class="empty-state compact">Noch keine Ereignisse.</div></div><button id="events-show-all" class="text-button" type="button" hidden>Alle Ereignisse anzeigen</button></section></div><div class="overview-context"><details><summary>Messpfad</summary><aside class="route-banner" aria-label="Zugeordneter Messpfad"><div><strong id="route-title">PC-Anschluss noch nicht zugeordnet</strong><p id="route-path">Wähle den Repeater am PC unter Geräte &amp; Repeater.</p><span id="route-detail" class="sr-only"></span></div><button id="route-info" class="info-tip" type="button" data-help="Alle markierten Repeater werden unabhängig gemessen. Ihre Verbindung untereinander wird aus Ping-Werten nicht abgeleitet." aria-label="Informationen zum Messpfad">ⓘ</button></aside></details><a id="game-overview" class="game-overview" href="#games" hidden><strong>Spiele &amp; Paket-Tracking</strong><span>Spiel auswählen und seinen Netzwerkverkehr beobachten</span></a></div>
+</div>
+<div id="page-devices" class="app-page" data-page="devices" hidden>
+<section class="panel" aria-labelledby="adapter-health-heading"><div class="panel-heading"><div><h2 id="adapter-health-heading">Netzwerkkarte: Fehler &amp; verworfene Pakete</h2></div></div><div id="adapter-health"></div><a href="#history" class="overview-history-link">Gespeicherte Zähler und Netzwerkwechsel im Verlauf ansehen</a></section>
+<div class="content-grid"><section class="panel targets-panel" aria-labelledby="targets-heading">
+        <div class="panel-heading"><div><h2 id="targets-heading">Verbindungsziele</h2></div><span id="target-count" class="count-badge">0 Ziele</span></div>
+        <div id="targets-list" class="targets-list"><div class="empty-state">Noch keine Messwerte. Starte die Überwachung, um Verbindungsziele zu prüfen.</div></div>
+        <form id="target-form" class="target-form"><label for="target-host">Eigenes Ziel überwachen</label><div class="form-row"><input id="target-label" name="label" type="text" maxlength="60" placeholder="Name (optional)" autocomplete="off" aria-label="Name des Messziels (optional)"><input id="target-host" name="host" type="text" maxlength="253" required placeholder="Host oder IP-Adresse" autocomplete="off" aria-label="Host oder IP-Adresse"><button class="button button-primary" type="submit" disabled>Hinzufügen</button></div><p class="field-help">Zum Beispiel ein Gerät oder ein DNS-Name.</p></form>
+      </section>
+<section class="panel interface-panel" aria-labelledby="interface-heading">
+        <div class="panel-heading"><div><h2 id="interface-heading">Netzwerkschnittstelle</h2></div><span id="interface-status" class="pill pill-muted">–</span></div>
+        <label class="select-label" for="interface-select">Aktive Schnittstelle</label><div class="select-row"><select id="interface-select" disabled aria-label="Netzwerkschnittstelle auswählen"><option>Warte auf Daten …</option></select><button id="scan-btn" class="button button-secondary" type="button" disabled><span aria-hidden="true">⌕</span>Netzwerk scannen</button></div>
+        <dl class="detail-list"><div><dt>IPv4-Adresse</dt><dd id="interface-ip">–</dd></div><div><dt>Gateway</dt><dd id="interface-gateway">–</dd></div><div><dt>DNS-Server</dt><dd><span id="interface-dns">–</span><small id="dns-status" class="dns-status">DNS-Status nicht bekannt</small></dd></div><div><dt>Verbindung</dt><dd id="interface-link">–</dd></div></dl>
+        <div id="network-warnings" class="network-warnings" aria-live="polite" hidden></div>
+        <p class="route-note">Ping und Speedtest folgen der aktuell von Windows gewählten Route.</p>
+        <form id="repeater-form" class="repeater-form"><label for="repeater-host">Weiteren Repeater überwachen</label><div class="form-row"><input id="repeater-host" name="host" type="text" maxlength="253" placeholder="Repeater im Gerätescan wählen oder IP eingeben" autocomplete="off" aria-label="Repeater-IP-Adresse oder Hostname"><button class="button button-secondary" type="submit" disabled>Repeater hinzufügen</button></div><p class="field-help">Jeder markierte Repeater erhält eigene Messwerte und einen eigenen Verlauf.</p></form>
+        <div class="repeater-connection"><label for="pc-repeater">Repeater am PC</label><select id="pc-repeater" disabled><option value="">Nicht zugeordnet / PC direkt am Router</option></select><p class="field-help"><span data-help="Wähle den Repeater, an dem dieser PC angeschlossen ist. Die Diagnose vergleicht ihn mit Router und Internet; weitere Repeater bleiben Vergleichsziele.">Wähle den Repeater, an dem dein PC angeschlossen ist.</span></p></div>
+        <div class="scan-progress" id="scan-progress" hidden><div class="progress-head"><span id="scan-message">Scan läuft …</span><span id="scan-count"></span></div><div class="progress-track"><i id="scan-bar"></i></div></div>
+        <p class="honesty-note"><span data-help="Der Scan fragt Geräte im lokalen Netz ab. Er führt keine Änderungen an ihnen aus.">Der Scan liest erreichbare Geräte im lokalen Netz.</span></p>
+      </section></div><section class="panel devices-panel" aria-labelledby="devices-heading"><div class="panel-heading"><div><h2 id="devices-heading">Gefundene Geräte</h2></div><span id="device-count" class="count-badge">0 Geräte</span></div><p class="panel-subtitle">Geräte, die der Scan im selben lokalen Netz sehen konnte.</p>
+        <div class="table-scroll"><table><thead><tr><th scope="col">Gerät</th><th scope="col">IP-Adresse</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Aktion</span></th></tr></thead><tbody id="devices-list"><tr><td colspan="4" class="table-empty">Noch keine Geräte gefunden</td></tr></tbody></table></div><p class="honesty-note"><span data-help="Nicht pingbare Geräte sind nicht automatisch offline. Gäste-Netze und Mesh-Zwischenstationen sind oft nicht sichtbar.">Ein fehlender Ping belegt keinen Ausfall.</span></p>
+      </section>
+</div>
+<div id="page-history" class="app-page" data-page="history" hidden>
+<section id="history-panel" class="history-panel" aria-labelledby="history-title">
+      <div class="history-heading"><div><h2 id="history-title">Messarchiv</h2><p>Messungen und Ereignisse im gewählten Zeitraum.</p></div><div class="history-controls"><label for="history-hours">Zeitraum</label><select id="history-hours"><option value="1" selected>1 Stunde</option><option value="6">6 Stunden</option><option value="24">24 Stunden</option><option value="168">7 Tage</option></select><button id="history-refresh" class="button button-secondary" type="button">Aktualisieren</button></div></div>
+
+      <nav class="history-tabs" aria-label="Verlaufsbereiche" role="tablist">
+        <button id="history-tab-connection" class="history-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="history-view" data-history-tab="connection">Verbindung</button>
+        <button id="history-tab-traffic" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="traffic">Datenverkehr</button>
+        <button id="history-tab-wireless" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="wireless">WLAN &amp; DNS</button>
+        <button id="history-tab-devices" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="devices">Geräte &amp; Scans</button>
+        <button id="history-tab-speed" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="speed">Leistungstests</button>
+        <button id="history-tab-events" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="events">Ereignisse</button>
+        <button id="history-tab-fritzbox" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="fritzbox">FRITZ!Box</button>
+      </nav>
+      <div id="history-view" class="history-view" role="tabpanel" aria-labelledby="history-tab-connection" tabindex="0"><div class="history-placeholder">Verlauf wird geladen …</div></div>
+      <div class="history-footer"><span id="history-updated">Noch nicht geladen</span><span id="history-retention">Bis zu 7 Tage lokal gespeichert; bei vielen Messungen kürzer.</span></div>
+    </section>
+</div>
+<div id="page-router" class="app-page" data-page="router" hidden>
+<section id="fritzbox-panel" class="panel fritzbox-panel" aria-labelledby="fritzbox-heading">
+      <div class="panel-heading"><div><h2 id="fritzbox-heading">FRITZ!Box-Zentrale</h2><p class="panel-subtitle fritzbox-subtitle">Gesamtverkehr, Einzelgeräte, Mesh, WLAN und Anschlussdaten direkt aus deiner Box.</p></div><span id="fritzbox-status" class="pill pill-muted">Nicht verbunden</span></div>
+      <form id="fritzbox-login" class="fritzbox-login" autocomplete="off">
+        <div class="fritzbox-login-fields"><div><label for="fritzbox-host">Router-Adresse</label><input id="fritzbox-host" name="host" type="text" value="fritz.box" maxlength="253" autocomplete="off"></div><div><label for="fritzbox-password">FRITZ!Box-Kennwort</label><input id="fritzbox-password" name="password" type="password" maxlength="256" required autocomplete="off" aria-describedby="fritzbox-login-help"></div><button id="fritzbox-connect" class="button button-primary" type="submit" disabled>Verbinden und lesen</button></div>
+        <p id="fritzbox-login-help" class="fritzbox-login-help"><span data-help="Deine FRITZ!Box fragt nur nach einem Kennwort? Dann reicht hier ebenfalls das Kennwort. Der zugehörige Benutzer wird automatisch ermittelt, sofern die Box ihn eindeutig meldet.">Der Benutzer wird nach Möglichkeit automatisch erkannt.</span></p>
+        <details class="fritzbox-user-option"><summary>Mit einem bestimmten Benutzer anmelden (optional)</summary><label for="fritzbox-username">FRITZ!Box-Benutzername (optional)</label><input id="fritzbox-username" name="username" type="text" maxlength="120" placeholder="Leer lassen für automatische Erkennung" autocomplete="off"><p>Bei mehreren Konten oder fehlender automatischer Erkennung den Namen unter „System → FRITZ!Box-Benutzer“ nachsehen.</p></details>
+      </form>
+      <p class="fritzbox-guidance"><span data-help="Die Anmeldung ist freiwillig. Für das Auslesen muss „Zugriff für Anwendungen zulassen“ in der FRITZ!Box aktiviert sein und der Zugang die nötigen Rechte besitzen. Das Kennwort bleibt nur für die laufende Verbindung im Arbeitsspeicher und wird nach jedem Versuch aus dem Feld gelöscht. Die App ändert keine Router-Einstellungen.">Aktiviere „Zugriff für Anwendungen zulassen“ in deiner FRITZ!Box.</span></p>
+      <div id="fritzbox-error" class="fritzbox-error" role="alert" hidden></div>
+      <div class="fritzbox-actions"><span id="fritzbox-updated" class="fritzbox-updated">Noch keine Routerdaten geladen</span><div><button id="fritzbox-refresh" class="button button-secondary" type="button" disabled>Aktualisieren</button><button id="fritzbox-disconnect" class="button button-quiet" type="button" disabled>Trennen</button></div></div>
+      <div id="fritzbox-data" class="fritzbox-data"><div class="history-empty">Verbinde optional mit deiner FRITZ!Box, um verfügbare interne Routerdaten zu lesen.</div></div>
+    </section>
+</div>
+<div id="page-tests" class="app-page" data-page="tests" hidden>
+<section class="panel speed-panel" aria-labelledby="speed-heading"><div class="speed-copy"><h2 id="speed-heading">Internetgeschwindigkeit messen</h2><p><span data-help="Wähle die Datenmenge für Download und Upload über Cloudflare. Der Test belastet die Leitung; kurze Einzelverbindungen können schnelle Anschlüsse unterschätzen.">Miss Download und Upload über Cloudflare.</span></p></div><button id="speed-btn" class="button button-primary" type="button" disabled>Speedtest starten</button>
+  <div class="speed-options"><div><label for="speed-download-size">Download-Datenmenge</label><select id="speed-download-size" disabled><option value="45000000">45 MB</option></select></div><div><label for="speed-upload-size">Upload-Datenmenge</label><select id="speed-upload-size" disabled><option value="8000000">8 MB</option></select></div><p id="speed-data-note" class="field-help"></p></div>
+  <div class="speed-results" aria-live="polite" aria-atomic="false">
+    <div class="speed-metric speed-download"><span>Download</span><strong id="speed-download-value">–</strong><small>Mbit/s</small></div>
+    <div class="speed-metric speed-upload"><span>Upload</span><strong id="speed-upload-value">–</strong><small>Mbit/s</small></div>
+    <div class="speed-metric speed-ping"><span>Internet-Ping</span><strong id="speed-ping-before">–</strong><small>vor Testlast </small><strong id="speed-ping-download">–</strong><small id="speed-ping-download-label">während Download </small><strong id="speed-ping-upload">–</strong><small id="speed-ping-upload-label">während Upload </small><strong id="speed-ping-after">–</strong><small>nach Testlast </small></div>
+  </div>
+  <div class="speed-progress" aria-live="polite"><div class="speed-progress-head"><strong id="speed-status">Bereit für den Test.</strong><span id="speed-progress-label"></span></div><div class="speed-progress-track" role="progressbar" aria-label="Speedtest-Fortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="speed-progress-bar"></i></div><p id="speed-measured-size" class="speed-ping-target"></p><p id="speed-ping-target" class="speed-ping-target">Pingwerte stammen von einer tatsächlichen ICMP-Messung zum Internetziel.</p></div>
+</section>
+<section class="panel stress-panel" aria-labelledby="stress-heading">
+  <div class="panel-heading"><div><h2 id="stress-heading">Dauerbelastungstest</h2></div></div>
+  <p class="panel-subtitle"><span data-help="Überträgt fortlaufend Testdaten über Cloudflare. Wähle Download, Upload oder beides und vergleiche währenddessen die Ping-Werte im Verlauf. Der Datenverbrauch wächst mit der Laufzeit; andere Anwendungen können langsamer werden.">Belaste deine Leitung über Cloudflare und vergleiche die Ping-Werte.</span></p>
+  <div class="stress-controls"><div><label for="stress-mode">Belastung</label><select id="stress-mode"><option value="both">Download + Upload</option><option value="download">Nur Download</option><option value="upload">Nur Upload</option></select></div><div><label for="stress-duration">Laufzeit</label><select id="stress-duration"><option value="60">1 Minute</option><option value="300" selected>5 Minuten</option><option value="900">15 Minuten</option><option value="1800">30 Minuten</option><option value="3600">1 Stunde</option><option value="0">Bis zum Stoppen</option></select></div><button id="stress-start" class="button button-primary" type="button" disabled>Dauerbelastung starten</button><button id="stress-stop" class="button button-secondary" type="button" disabled>Stoppen</button></div>
+  <p id="stress-state" class="stress-state" role="status">Bereit – startet erst mit deinem Klick</p>
+  <div class="stress-metrics"><div><span>Laufzeit</span><strong id="stress-elapsed">0:00 min</strong></div><div><span>Download</span><strong id="stress-download-total">0 MB</strong><small id="stress-down-rate">– Mbit/s</small></div><div><span>Bestätigter Upload</span><strong id="stress-upload-total">0 MB</strong><small id="stress-up-rate">– Mbit/s</small></div></div>
+  <p id="stress-progress-note" class="field-help"><span data-help="Durchschnitt seit Testbeginn. Upload zählt bestätigte Übertragungen.">Durchschnitt seit Testbeginn.</span></p>
+  <p class="field-help"><span data-help="Der Stop-Knopf und das Beenden der App brechen laufende Übertragungen ab. „Bis zum Stoppen“ hat keine feste Datenobergrenze.">Du kannst den Test jederzeit stoppen.</span></p>
+  <a class="overview-history-link" href="#history">Ping und Datenverkehr im Verlauf vergleichen</a>
+</section>
+<section class="panel wifi-panel" aria-labelledby="wifi-heading"><div class="panel-heading"><div><h2 id="wifi-heading">WLAN-Status</h2></div><span id="wifi-pill" class="pill pill-muted">–</span></div>
+        <div class="wifi-current"><div class="wifi-symbol" aria-hidden="true">⌁</div><div class="wifi-main"><strong id="wifi-ssid">Nicht verbunden</strong><span id="wifi-description">WLAN-Informationen werden geladen</span></div><div class="signal-block"><strong id="wifi-signal">–</strong><span>Signal</span></div></div>
+        <div class="wifi-metrics"><div><span>Kanal</span><strong id="wifi-channel">–</strong></div><div><span>Funk</span><strong id="wifi-radio">–</strong></div><div><span>Empfangsrate</span><strong id="wifi-receive">–</strong></div><div><span>Senderate</span><strong id="wifi-transmit">–</strong></div></div>
+        <p class="table-caption">Sichtbare WLAN-Netze in Reichweite</p><div class="table-scroll"><table><thead><tr><th scope="col">Netzwerk</th><th scope="col">Kanal</th><th scope="col">Signal</th></tr></thead><tbody id="wifi-networks"><tr><td colspan="3" class="table-empty">Noch keine WLAN-Daten</td></tr></tbody></table></div><p class="honesty-note">WLAN-Raten sind ausgehandelte Verbindungsraten, kein Speedtest.</p>
+      </section>
+<section class="panel" aria-labelledby="tests-dns-heading"><div class="panel-heading"><div><h2 id="tests-dns-heading">DNS-Status</h2></div></div><p id="tests-dns-status" class="panel-subtitle">Noch keine DNS-Messung.</p><p class="honesty-note"><span data-help="Die laufende Überwachung prüft example.com über Windows. DNS-Server und Schnittstelle findest du unter Geräte &amp; Repeater.">Die Überwachung prüft die Namensauflösung über Windows.</span></p></section>
+</div>
+<div id="page-ai" class="app-page" data-page="ai" hidden>
+<section id="ai-panel" class="panel ai-panel" aria-labelledby="ai-heading">
+      <div class="panel-heading"><div><h2 id="ai-heading">Mit Codex auswerten</h2><p class="ai-subtitle">Mögliche Ursachen und nächste Prüfschritte aus deinen Messwerten ableiten.</p></div><span id="ai-status" class="pill pill-muted">Verbindung wird geprüft</span></div>
+      <p class="ai-consent"><span data-help="Beim Start werden die Messwerte und ein bereinigtes FRITZ!Box-Routerprotokoll an OpenAI zur Auswertung gesendet. Kennwörter werden nicht aufgenommen. Ohne deinen Klick wird nichts übermittelt. Eine FRITZ!Box-Anmeldung ist optional.">Mit deinem Klick sendest du Messwerte und bereinigte Routerprotokolle an OpenAI.</span></p>
+      <div class="ai-connection"><span id="ai-connection-message" role="status">Codex-Verbindung wird geprüft …</span><div class="ai-actions"><button id="ai-check" class="button button-secondary" type="button">Verbindung prüfen</button><button id="ai-login" class="button button-secondary" type="button" hidden>Codex anmelden</button><button id="ai-cancel" class="button button-quiet" type="button" hidden>Abbrechen</button></div></div>
+      <p id="ai-login-help" class="ai-login-help" hidden>Installiere bei Bedarf die Codex CLI. <a href="https://learn.chatgpt.com/docs/codex-cli" target="_blank" rel="noopener noreferrer">Offizielle Codex-CLI-Anleitung</a></p>
+      <div class="ai-start-row"><label for="ai-hours">Auswertungszeitraum</label><select id="ai-hours"><option value="1" selected>1 Stunde</option><option value="6">6 Stunden</option><option value="24">24 Stunden</option><option value="168">7 Tage</option></select><button id="ai-start" class="button button-primary" type="button" disabled>Diagnose an Codex senden</button></div>
+      <p class="ai-recommendation"><span data-help="Für eine aussagekräftige Analyse zuerst einige Messungen sammeln. Fehlende FRITZ!Box-Daten verhindern den Start nicht.">Sammle vor der Auswertung einige Messungen.</span></p>
+      <p id="ai-target-map" class="ai-recommendation" hidden></p>
+      <details id="ai-report-details" class="ai-report-details"><summary>Berichtsvorschau ansehen</summary><div class="ai-report-tools"><button id="ai-report-load" class="button button-quiet" type="button">Vorschau laden</button><span id="ai-report-summary" aria-live="polite">Noch keine Vorschau geladen.</span></div><pre id="ai-report-preview" class="ai-report-preview" hidden></pre></details>
+      <div id="ai-result-wrap" class="ai-result-wrap" hidden><div class="ai-result-heading"><h3>Deine Diagnose</h3><span id="ai-result-time"></span></div><div id="ai-result" aria-live="polite"></div></div>
+      <p id="ai-error" class="ai-error" role="alert" hidden></p>
+      <section class="ai-archive" aria-labelledby="ai-archive-heading"><h3 id="ai-archive-heading">Gespeicherte Diagnosen</h3><p class="ai-recommendation"><span data-help="Frühere Auswertungen bleiben auch nach Neustart oder Reset im lokalen Archiv. Öffnen sendet keine Daten an Codex.">Gespeicherte Diagnosen öffnest du lokal.</span></p><label for="ai-archive-select">Diagnose auswählen</label><select id="ai-archive-select"><option value="">Archiv wird geladen …</option></select><div class="ai-archive-tools"><button id="ai-archive-open" class="button button-secondary" type="button">Gespeicherte Diagnose öffnen</button><button id="ai-archive-prev" class="button button-quiet" type="button" disabled>Neuere</button><button id="ai-archive-next" class="button button-quiet" type="button" disabled>Ältere</button></div><p id="ai-archive-status" role="status"></p><p id="ai-storage-error" class="ai-error" hidden></p><div id="ai-archive-result" hidden></div></section>
+    </section>
+</div>
+<div id="page-games" class="app-page" data-page="games" hidden>
+  <section class="panel" aria-labelledby="game-heading">
+    <div class="game-heading"><div><h2 id="game-heading">Was sendet dein Spiel?</h2><p id="game-detection-status" class="game-muted" role="status">Spieleerkennung wird geladen …</p></div><label class="startup-option"><input id="game-detection-enabled" type="checkbox" checked disabled> Spiele automatisch erkennen</label></div>
+    <p id="game-detection-note" class="game-muted"></p>
+    <div class="game-selection"><label for="game-select">Laufendes Spiel</label><select id="game-select" disabled><option value="">Noch kein Spiel erkannt</option></select><button id="game-capture-start" type="button" class="button button-primary" disabled>Tracking starten</button><button id="game-capture-stop" type="button" class="button button-secondary" disabled>Stoppen</button></div>
+    <p id="game-selected-detail" class="game-muted">Starte ein Spiel, zum Beispiel Marvel Rivals.</p>
+    <p class="game-tracking-mode">Für das ganze Match: läuft bis „Stoppen“, bis das ausgewählte Spiel endet oder die App geschlossen wird.</p>
+    <p class="game-help"><span data-help="Beim Start fragt Windows nach der Administratorfreigabe für einen getrennten Erfassungshelfer. Er liest Netzwerkmetadaten des ausgewählten Spiels; keine Paketnutzlasten oder Spielinhalte. Die App bleibt normal gestartet.">Windows benötigt deine Freigabe zum Erfassen der Netzwerkmetadaten.</span></p>
+    <div class="game-capture-heading"><strong id="game-capture-status" role="status">Bereit für eine Messung</strong><span id="game-capture-game">Noch keine Spielmessung gestartet</span></div>
+    <div class="game-counters"><div class="game-counter"><span>Vom PC gesendet</span><strong id="game-sent-packets">–</strong><small>Sendeereignisse des Spiels</small></div><div class="game-counter"><span>Am PC empfangen</span><strong id="game-received-packets">–</strong><small>Empfangsereignisse des Spiels</small></div><div class="game-counter"><span>Daten gesendet</span><strong id="game-sent-bytes">–</strong><small>Von Windows gemeldete Bytes</small></div><div class="game-counter"><span>Daten empfangen</span><strong id="game-received-bytes">–</strong><small>Von Windows gemeldete Bytes</small></div></div>
+    <p id="game-capture-note" class="game-capture-note"></p>
+    <div class="game-chart-wrap"><div class="game-chart-legend"><span>Empfangen</span><span>Gesendet</span></div><svg id="game-packet-chart" viewBox="0 0 800 130" preserveAspectRatio="none" role="img" aria-label="Zeitverlauf der gesendeten und empfangenen Daten des Spiels"><text x="400" y="70" text-anchor="middle" class="chart-empty">Noch keine Messung.</text></svg></div>
+    <p id="game-chart-resolution" class="game-help"><span data-help="Die Zähler erfassen das ganze Match. Lange Verläufe werden für die Anzeige zeitlich zusammengefasst.">Die Zähler erfassen das ganze Match.</span></p>
+    <div class="game-proof"><div><strong>Am PC beobachtet</strong><p><span data-help="Windows meldet Senden und Empfangen pro Spielprozess. Ein Netzwerkereignis kann mehrere tatsächliche Pakete zusammenfassen.">Windows meldet Senden und Empfangen pro Spielprozess.</span></p></div><div><strong>Hinter dem Router: nicht einzeln beobachtet</strong><p><span data-help="„Gesendet“ bestätigt keine Zustellung am Spielserver. Ob genau diese Pakete das Heimnetz verlassen, wäre nur mit einer zusätzlichen Messung am Router nachweisbar.">„Gesendet“ bestätigt keine Zustellung am Spielserver.</span></p></div></div>
+    <h3 class="game-section-title">Verbindungen des ausgewählten Spiels</h3><div class="table-scroll"><table class="game-endpoint-table"><thead><tr><th>Protokoll</th><th>Zieladresse / Port</th><th>Gesendet · Ereignisse / Daten</th><th>Empfangen · Ereignisse / Daten</th></tr></thead><tbody id="game-endpoints"><tr><td colspan="4" class="table-empty">Noch keine Zielverbindungen erfasst.</td></tr></tbody></table></div>
+    <p class="game-help">TCP-Wiederholungen: <strong id="game-retransmits" class="measurement">–</strong> <button class="info-tip" type="button" aria-label="Informationen zu Paketdaten" data-help="TCP-Wiederholungen sind Hinweise, keine gemessene Paketverlustrate. Aus UDP-Sende- und Empfangszahlen lässt sich kein Paketverlust berechnen. Zieladressen bleiben lokal und werden nicht als Spielserver bestätigt.">ⓘ</button></p>
+  </section>
+  <section class="panel" aria-labelledby="game-network-heading"><div class="panel-heading"><h2 id="game-network-heading">Was macht das Heimnetz zur selben Zeit?</h2></div><p id="game-network-note" class="game-muted">Wähle ein Spiel für den Vergleich.</p><div id="game-network-comparison" class="game-network-comparison"></div><p class="game-help">Längere Messungen findest du im <a href="#history">Verlauf</a>.</p></section>
+  <section class="panel game-comparison" aria-labelledby="game-comparison-heading">
+    <div class="panel-heading"><div><h2 id="game-comparison-heading">Lag zwischen Matches vergleichen</h2></div></div>
+    <p class="game-muted"><span data-help="Vergleicht lokale Ping-Messungen während zweier beobachteter Spielsitzungen. Der Start ist der Beginn der lokalen Beobachtung; er muss nicht dem tatsächlichen Spielstart entsprechen.">Vergleiche die Ping-Messungen zweier Spielsitzungen.</span></p>
+    <div class="game-comparison-controls"><label for="game-comparison-hours">Historienfenster<select id="game-comparison-hours"><option value="1">Letzte Stunde</option><option value="6">Letzte 6 Stunden</option><option value="24">Letzte 24 Stunden</option><option value="168" selected>Letzte 7 Tage</option></select></label><button id="game-comparison-refresh" class="button button-secondary" type="button">Verlauf laden</button></div>
+    <p id="game-comparison-status" class="game-comparison-status" role="status">Der Verlauf wird nur auf Anfrage geladen.</p>
+    <div class="game-comparison-pickers"><label for="game-comparison-a">Sitzung A<select id="game-comparison-a" size="6" aria-label="Erste Spielsitzung auswählen"></select></label><label for="game-comparison-b">Sitzung B<select id="game-comparison-b" size="6" aria-label="Zweite Spielsitzung auswählen"></select></label></div>
+    <div id="game-comparison-result" aria-live="polite"><p class="game-comparison-message">Lade den Verlauf über „Verlauf laden“; dabei werden nur gespeicherte Messungen verwendet.</p></div>
+    <p class="game-help"><span data-help="Eine Historie mit begrenzter Aufbewahrung kann Starts, Enden oder Messwerte verlieren. Fehlende Zeiträume bedeuten keine störungsfreie Verbindung. Vergleichswerte helfen beim Eingrenzen, belegen aber keine Ursache.">Vergleichswerte helfen dir beim Eingrenzen.</span></p>
+  </section>
+  <section class="panel" aria-labelledby="game-sessions-heading"><div class="panel-heading"><h2 id="game-sessions-heading">Zuletzt beobachtete Spielsitzungen</h2></div><div class="table-scroll"><table class="game-session-table"><thead><tr><th>Spiel</th><th>Beobachtet seit</th><th>Bis</th><th>Status</th></tr></thead><tbody id="game-sessions"><tr><td colspan="4" class="table-empty">Noch keine Spielsitzung beobachtet.</td></tr></tbody></table></div><p class="game-help"><span data-help="Starts und Enden werden im Ereignisverlauf gespeichert. Wird die App beendet oder die Erkennung abgeschaltet, endet nur die Beobachtung.">Starts und Enden findest du im Ereignisverlauf.</span></p></section>
+  <section class="panel" aria-labelledby="game-custom-heading"><div class="panel-heading"><h2 id="game-custom-heading">Ein Spiel wird nicht erkannt?</h2></div><p class="game-muted"><span data-help="Steam- und Epic-Installationen sowie bekannte Spielprozesse werden automatisch zugeordnet. Weitere Spiele kannst du mit ihrem EXE-Dateinamen ergänzen. Den Namen findest du im Windows-Task-Manager unter „Details“.">Ergänze weitere Spiele mit ihrem EXE-Dateinamen.</span></p><form id="game-custom-form" class="game-custom-form"><label>Spielname<input id="game-custom-name" name="name" maxlength="80" required placeholder="Mein Spiel" autocomplete="off"></label><label>EXE-Dateiname<input id="game-custom-exe" name="executable" maxlength="120" required placeholder="MeinSpiel.exe" autocomplete="off" spellcheck="false"></label><button class="button button-secondary" type="submit" disabled>Spiel hinzufügen</button></form><div id="game-custom-list"></div><p class="game-help"><span data-help="Nur den Dateinamen eintragen, keinen Pfad oder Startbefehl. Gemeinsame Programme wie javaw.exe können mehrere verschiedene Spiele starten und sind deshalb ohne eigene Zuordnung nicht eindeutig.">Trage nur den Dateinamen ein.</span></p></section>
+</div>
+<div id="page-settings" class="app-page" data-page="settings" hidden>
+  <section class="panel" aria-labelledby="startup-heading"><div class="panel-heading"><div><h2 id="startup-heading">Mit Windows starten</h2></div></div>
+    <label class="startup-option"><input id="startup-enabled" type="checkbox" checked disabled> Netzwerk-Kompass beim Windows-Anmelden automatisch starten</label>
+    <p id="startup-status" class="panel-subtitle" role="status">Autostart wird geprüft …</p><p class="honesty-note"><span data-help="Die portable EXE muss an ihrem Speicherort bleiben. Beim nächsten manuellen Start wird ihr gespeicherter Pfad aktualisiert.">Lass die portable EXE an ihrem Speicherort.</span></p>
+  </section>
+  <section class="panel" aria-labelledby="storage-heading"><div class="panel-heading"><div><h2 id="storage-heading">Gespeicherte Messungen & Sitzungen</h2></div></div>
+    <p id="storage-status" class="panel-subtitle">Speicherstatus wird geladen …</p><p class="honesty-note"><span data-help="Ein unerwartetes Ende belegt noch keinen PC-Absturz: Auch Stromausfall oder erzwungenes Beenden kommen infrage. Nicht gemessene Zeiträume sind keine nachgewiesenen Netzausfälle.">Ein unerwartetes Ende belegt keinen PC-Absturz.</span></p>
+    <div id="session-list" class="table-scroll"></div>
+  </section>
+</div>
+<p class="page-footnote">PC-Verkehr misst den gewählten Adapter. FRITZ!Box-WAN und Geräte-Internetverkehr werden getrennt ausgewiesen, soweit die Box diese Daten bereitstellt.</p>
+</main>
+  <dialog id="trace-dialog" class="trace-dialog" aria-labelledby="trace-title"><div class="dialog-head"><div><h2 id="trace-title">Weg zum Ziel</h2></div><button id="trace-close" class="icon-button" type="button" aria-label="Dialog schließen">×</button></div><p id="trace-host" class="trace-host"></p><pre id="trace-output" aria-live="polite">Traceroute wird gestartet …</pre><div class="dialog-actions"><button id="trace-done" class="button button-secondary" type="button">Schließen</button></div></dialog>
+  <dialog id="lag-hotkey-dialog" class="trace-dialog lag-hotkey-dialog" aria-labelledby="lag-hotkey-title">
+    <div class="dialog-head"><div><h2 id="lag-hotkey-title">Deinen Hotkey einstellen</h2></div></div>
+    <p><span data-help="Wähle eine einzelne Tastatur- oder Maustaste, das Mausrad oder eine Kombination. Damit markierst du einen Lag-Moment auch mitten im Spiel.">Wähle eine Taste oder Kombination zum Markieren von Lag.</span></p>
+    <label for="lag-hotkey-input">Gewählte Taste</label>
+    <input id="lag-hotkey-input" class="lag-hotkey-input" type="text" readonly autocomplete="off" placeholder="Noch keine Taste gewählt" aria-describedby="lag-hotkey-help lag-hotkey-error">
+    <button id="lag-hotkey-record" class="button button-secondary lag-hotkey-record" type="button">Taste aufnehmen</button>
+    <p id="lag-hotkey-record-status" role="status" aria-live="polite">Die Aufnahme beginnt erst mit einem Klick auf „Taste aufnehmen“.</p>
+    <p id="lag-hotkey-help" class="panel-subtitle"><span data-help="Danach eine Taste drücken oder eine Maustaste klicken: links, rechts, Mitte oder Seitentasten. Auch Tab und Escape sind wählbar; einzelne Strg-/Alt-/Umschalt-/Win-Tasten beim Loslassen. Zum Abbrechen den Button unten verwenden. Deine normale Eingabe bleibt im Spiel wirksam. Windows-Sicherheitsfolgen wie Strg+Alt+Entf und Hardware-Fn ohne Windows-Tastenereignis können nicht erfasst werden.">Drücke nach dem Aufnahmestart deine gewünschte Taste.</span></p>
+    <p id="lag-hotkey-error" class="lag-hotkey-error" role="alert"></p>
+    <div class="dialog-actions"><button id="lag-hotkey-remove" class="button button-quiet" type="button" disabled>Entfernen</button><button id="lag-hotkey-cancel" class="button button-secondary" type="button">Abbrechen</button><button id="lag-hotkey-save" class="button button-primary" type="button" disabled>Speichern</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
