@@ -9,6 +9,16 @@ import { runProcess } from '../lib/probes.js';
 
 const compiler = path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
 const source = fileURLToPath(new URL('../scripts/portable-launcher.cs', import.meta.url));
+const COMPILER_TIMEOUT_MS = 30000;
+const HARNESS_TIMEOUT_MS = 10000;
+
+async function compile(args, phase) {
+  try { return await runProcess(compiler,args,{timeoutMs:COMPILER_TIMEOUT_MS}); }
+  catch(error) {
+    const timeout = error.code === 'PROBE_TIMEOUT';
+    throw Object.assign(new Error(timeout ? `${phase}: .NET-Compiler hat das Build-Zeitlimit von ${COMPILER_TIMEOUT_MS / 1000} Sekunden überschritten.` : `${phase}: .NET-Compiler konnte nicht ausgeführt werden.`,{cause:error}),{code:timeout?'LAUNCHER_COMPILE_TIMEOUT':error.code});
+  }
+}
 
 // Compile the actual launcher into a library; do not start the product, its
 // payload, Electron, Node server, tray, capture helper or any UAC workflow.
@@ -74,16 +84,16 @@ internal static class RaceRegression
 }
 `;
 
-test('compiled launcher exit callbacks are safe when child disposal overtakes UI dispatch', { skip: process.platform !== 'win32' || !existsSync(compiler), timeout:30000 }, async()=>{
+test('compiled launcher exit callbacks are safe when child disposal overtakes UI dispatch', { skip: process.platform !== 'win32' || !existsSync(compiler), timeout:80000 }, async()=>{
   const directory = await mkdtemp(path.join(os.tmpdir(), 'launcher-race-test-'));
   try {
     const library = path.join(directory, 'launcher.dll'), cs = path.join(directory, 'race.cs'), executable = path.join(directory, 'race.exe');
     await writeFile(cs,harness);
-    const built = await runProcess(compiler,['/nologo','/target:library','/platform:x64',`/out:${library}`,'/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.IO.Compression.dll','/reference:System.IO.Compression.FileSystem.dll',source],{timeoutMs:10000});
+    const built = await compile(['/nologo','/target:library','/platform:x64',`/out:${library}`,'/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.IO.Compression.dll','/reference:System.IO.Compression.FileSystem.dll',source],'Launcher-Bibliothek kompilieren');
     assert.equal(built.code,0,built.stdout+'\n'+built.stderr);
-    const compiled = await runProcess(compiler,['/nologo','/target:exe','/platform:x64',`/out:${executable}`,'/reference:System.Windows.Forms.dll',cs],{timeoutMs:10000});
+    const compiled = await compile(['/nologo','/target:exe','/platform:x64',`/out:${executable}`,'/reference:System.Windows.Forms.dll',cs],'Race-Harness kompilieren');
     assert.equal(compiled.code,0,compiled.stdout+'\n'+compiled.stderr);
-    const checked = await runProcess(executable,[library],{timeoutMs:10000});
+    const checked = await runProcess(executable,[library],{timeoutMs:HARNESS_TIMEOUT_MS});
     assert.equal(checked.code,0,checked.stdout+'\n'+checked.stderr);
     assert.match(checked.stdout,/launcher exit\/dispose regression passed/);
   } finally {
