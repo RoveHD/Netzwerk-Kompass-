@@ -32,6 +32,8 @@
 .ping-chart .history-line{fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .ping-chart .history-area{stroke:none}
 .ping-chart .history-loss-marker{fill:var(--red,#E06A5F)}
+.ping-chart [data-lag-at],#latency-chart [data-lag-at]{cursor:pointer}
+.ping-chart .history-spike-marker,#latency-chart .latency-spike{stroke:var(--orange,#E0A84A);stroke-width:2}
 @media(max-width:500px){
   .history-chart.ping-chart{overflow:hidden}
   .history-chart.ping-chart svg{min-width:0;height:280px}

@@ -2,10 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { trafficSources } from '../public/traffic-history.js';
 import { sessionLabel } from '../public/storage.js';
+test('Fast router traffic keeps counter endpoint separate from response time and propagates uncertainty',()=>{
+  const sources=trafficSources([{type:'fritzbox',kind:'traffic',at:'2026-10-11T10:00:05Z',wan:{intervalStartedAt:'2026-10-11T10:00:00Z',intervalEndedAt:'2026-10-11T10:00:02Z',downloadDeltaBytes:250000,uploadDeltaBytes:0,downloadMbps:1,uploadMbps:0,measurementBasis:'request-observation-window',timingUncertaintyMs:20}}]);
+  const point=sources.find(source=>source.id==='wan').points[0];
+  assert.equal(point.at,'2026-10-11T10:00:02Z');assert.equal(point.observedAt,'2026-10-11T10:00:05Z');assert.equal(point.timingUncertaintyMs,20);assert.equal(point.measurementBasis,'request-observation-window');
+});
 test('traffic keeps PC, WAN and device scopes separate and sums only measured differences',()=>{
   const device={id:'mac:A',name:'PC',available:true,rateAvailable:true,totalBytesReceived:9e12,downloadMbps:8,uploadMbps:1,downloadDeltaBytes:1000000,uploadDeltaBytes:125000,intervalStartedAt:'2026-10-11T10:00:00Z'};
-  const sources=trafficSources([{type:'traffic',at:'2026-10-11T10:00:00Z',interfaceId:'LAN',downloadMbps:3,uploadMbps:2,appSessionId:'one'},{type:'fritzbox',at:'2026-10-11T10:00:01Z',wan:{downloadMbps:40,uploadMbps:10},deviceTraffic:[device]}],{connected:true});
+  const sources=trafficSources([{type:'traffic',at:'2026-10-11T10:00:00Z',intervalStartedAt:'2026-10-11T09:59:00Z',interfaceId:'LAN',downloadMbps:3,uploadMbps:2,appSessionId:'one'},{type:'fritzbox',at:'2026-10-11T10:00:01Z',wan:{downloadMbps:40,uploadMbps:10,intervalStartedAt:'2026-10-11T09:59:01Z',downloadDeltaBytes:600000000,uploadDeltaBytes:150000000,downstreamMbps:1000,upstreamMbps:100},capture:{reason:'lag',triggeredAt:'2026-10-11T10:00:00Z'},deviceTraffic:[device]}],{connected:true});
   assert.equal(sources.length,3);assert.equal(sources[0].latest.downloadMbps,3);assert.equal(sources[1].latest.downloadMbps,40);
+  assert.equal(sources[0].latest.intervalStartedAt,'2026-10-11T09:59:00Z');assert.equal(sources[0].latest.downloadDeltaBytes,22500000);assert.equal(sources[0].latest.bytesDerived,true);
+  assert.equal(sources[1].latest.intervalStartedAt,'2026-10-11T09:59:01Z');assert.equal(sources[1].latest.downstreamMbps,1000);assert.equal(sources[1].latest.capture.reason,'lag');
   assert.equal(sources[2].downloadBytes,1000000);assert.equal(sources[2].uploadBytes,125000);assert.equal(sources[0].downloadBytes,null);
 });
 test('missing counters remain visible and unknown; app restarts split chart epochs',()=>{

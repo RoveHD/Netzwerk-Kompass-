@@ -4,6 +4,8 @@ const path = require('node:path');
 const { startDesktop, configurePersistence } = require('./main.cjs');
 const { createServerLifecycle, createQuitCoordinator } = require('./server-lifecycle.cjs');
 const { createBackgroundUpdater } = require('./updater.cjs');
+const { createBackgroundMonitoring } = require('./background.cjs');
+const { createBackgroundServer } = require('./background-server.cjs');
 
 let desktop, server, updater, tray, mayQuit = false, quitting = false, fatal = false;
 let exitCode = 0;
@@ -23,6 +25,9 @@ function log(message) {
   try { fs.appendFileSync(logFile, `${new Date().toISOString()} ${text}\n`); } catch {}
   if (diagnostics) process.stdout.write(`INSTALLED ${text}\n`);
 }
+const background = createBackgroundMonitoring({ desktopDir, restartSupported: true,
+  runtimeStatus: () => server?.status?.() || { running: false, state: 'starting' },
+  onStatus: () => { desktop?.notifyBackground(); updateMenu(); } });
 const requestQuit = createQuitCoordinator({
   stopServer: windowsShutdown => server ? server.stop(windowsShutdown) : Promise.resolve(),
   closeDesktop: () => desktop?.stop(), stopUpdater: windowsShutdown => updater?.close(windowsShutdown), log,
@@ -40,12 +45,15 @@ function fail(error) {
 }
 function updateMenu() {
   if (!tray || tray.isDestroyed()) return;
-  const labels = { idle: 'Updates', checking: 'Updates werden geprüft', downloading: 'Update wird geladen', current: 'App ist aktuell', ready: 'Update bereit', error: 'Updateprüfung nicht verfügbar' };
+  const labels = { idle: 'Updates', checking: 'Updates werden geprüft', available: 'Update verfügbar', downloading: 'Update wird geladen', current: 'App ist aktuell', ready: 'Update bereit', error: 'Updatefehler – erneut versuchen' };
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Netzwerk-Kompass öffnen', click: () => desktop?.show() },
+    { label: 'Beim Schließen im Hintergrund überwachen', type: 'checkbox', checked: background.enabled,
+      click: item => { background.set(item.checked).then(() => desktop?.window?.webContents.setBackgroundThrottling(!background.enabled)).catch(error => log(error.message)); } },
     { type: 'separator' },
     { label: labels[updater?.status || 'idle'], enabled: false },
-    { label: 'Updates prüfen', enabled: Boolean(updater?.enabled && !updater.downloaded), click: () => updater?.check() },
+    { label: 'Updates prüfen', enabled: Boolean(updater?.enabled && !updater.downloaded && !updater.busy), click: () => updater?.check() },
+    ...(updater?.available ? [{ label: 'Update herunterladen', enabled: !updater.busy, click: () => updater?.download() }] : []),
     ...(updater?.downloaded ? [{ label: 'Update installieren und neu starten', click: () => quit({ update: true }) }] : []),
     { type: 'separator' },
     { label: 'Beenden', click: () => quit() }
@@ -70,8 +78,11 @@ else app.whenReady().then(async () => {
   const readyUpdate = await updater.checkBeforeStart();
   if (fatal || mayQuit || quitting) return;
   if (readyUpdate && updater.installAndRestart()) { mayQuit = true; return; }
-  server = createServerLifecycle({ appDir, nodePath: path.join(process.resourcesPath, 'runtime', 'node.exe'),
+  server = createBackgroundServer({ createLifecycle: createServerLifecycle, appDir, nodePath: path.join(process.resourcesPath, 'runtime', 'node.exe'),
     dataDir, exePath: process.execPath, noAutostart: isolated, log,
+    shouldRestart: () => background.enabled && !quitting && !fatal,
+    onStatus: () => background.notify(),
+    onRestart: async url => { process.env.NETZWERK_KOMPASS_URL = url; await desktop?.reconnect(url); },
     onUnexpectedExit: (error, result) => { if (result.code === 0) quit(); else fail(error); }
   });
   const url = await server.start();
@@ -82,6 +93,6 @@ else app.whenReady().then(async () => {
   tray.setToolTip('Netzwerk-Kompass');
   tray.on('double-click', () => desktop?.show());
   updateMenu();
-  desktop = startDesktop({ managed: true, persistenceConfigured: true, onShutdown: windowsShutdown => quit({ windowsShutdown }),
+  desktop = startDesktop({ managed: true, persistenceConfigured: true, backgroundMonitoring: background, onShutdown: windowsShutdown => quit({ windowsShutdown }),
     onFatal: fail, onReady: () => log('DESKTOP_READY') });
 }).catch(fail);

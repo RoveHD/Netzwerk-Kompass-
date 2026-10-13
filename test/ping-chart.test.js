@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fitPingRange, zoomPingRange, panPingRange, followPingRange, initialPingRange, updatePingRange, mergeQueuedPingUpdate, preparePingSeries, isPingLossPoint, visiblePingValues, nearestPingPoint, nearestPingTime, pingTimeX, niceAxisTicks } from '../public/ping-chart.js';
 
-test('latency axes use rounded ticks and include the 30 ms reference range', () => {
+test('latency axes use rounded ticks for observed ranges', () => {
   assert.deepEqual(niceAxisTicks(75), [0,25,50,75]);
   assert.deepEqual(niceAxisTicks(61), [0,25,50,75]);
   assert.deepEqual(niceAxisTicks(1), [0,0.25,0.5,0.75,1]);

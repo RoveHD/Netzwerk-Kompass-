@@ -9,6 +9,21 @@ function fixture(records = [], extra = {}) {
   return { state, snapshot: () => state, historySnapshot: () => ({ from: at(0), to: at(60000), records, truncated: false }) };
 }
 const ping = (offset, result, epoch = 0) => ({ type: 'ping', at: at(offset), epoch, results: [{ host: '192.168.1.1', kind: 'gateway', ...result }] });
+
+test('lag-triggered router snapshots preserve bounded capture and traffic interval evidence for diagnosis',()=>{
+  const records=Array.from({length:20},(_,index)=>({type:'fritzbox',at:at(index*2000),wan:{intervalStartedAt:at(index*2000-1000),downloadDeltaBytes:100,uploadDeltaBytes:20},deviceTraffic:[]}));
+  records[18].capture={reason:'lag',triggeredAt:at(35000),password:'never include'};
+  records.push({type:'traffic',at:at(39000),intervalStartedAt:at(34000),downloadMbps:8,uploadMbps:2});
+  const {report}=buildDiagnosticReport(fixture(records));
+  const captured=report.fritzbox.deviceTraffic.history.find(record=>record.capture);
+  assert.deepEqual(captured.capture,{reason:'lag',triggeredAt:at(35000)});
+  assert.equal(captured.at,at(36000));
+  assert.equal(report.fritzbox.history[0].wan.downloadDeltaBytes,100);
+  assert.equal(report.fritzbox.history[0].wan.intervalStartedAt,at(-1000));
+  assert.equal(report.pcTraffic[0].intervalStartedAt,at(34000));
+  assert.ok(!JSON.stringify(report).includes('never include'));
+  assert.match(diagnosticPrompt(report),/Ein Minutenmittel ist kein Wert genau in der Lag-Sekunde/);
+});
 test('report includes bounded adapter error deltas without raw driver counters or arbitrary fields',()=>{
   const {report}=buildDiagnosticReport(fixture([{type:'traffic',at:at(5000),adapterHealth:{intervalStartedAt:at(0),intervalMs:5000,delta:{receivedErrors:4,sentErrors:null,receivedDiscards:0,sentDiscards:0,private:'secret'},counters:{receivedErrors:999},private:'secret'}}]));
   assert.equal(report.pcTraffic[0].adapterHealth.delta.receivedErrors,4);
@@ -44,13 +59,13 @@ test('diagnostic prompt requires a short, plain-language, evidence-ranked diagno
   assert.match(prompt, /local.interfaceKind beschreibt nur den ausgewählten PC-Adapter/);
   assert.match(prompt, /keine Route, die nicht gemessen oder durch Mesh-Daten belegt ist/);
   assert.match(prompt, /report\.pingWarningMs/);
-  assert.match(prompt, /bis einschließlich 30 ms ist nach der App-Einstufung unauffällig/);
+  assert.match(prompt, /bis einschließlich 50 ms ist nach der App-Einstufung unauffällig/);
 });
 
 test('report exposes the same ping warning threshold used by the monitor', () => {
   const { report } = buildDiagnosticReport(fixture());
-  assert.equal(report.pingWarningMs, 30);
-  assert.match(diagnosticPrompt(report), /Ein reiner Ping-Durchschnitt bis einschließlich 30 ms/);
+  assert.equal(report.pingWarningMs, 50);
+  assert.match(diagnosticPrompt(report), /Ein reiner Ping-Durchschnitt bis einschließlich 50 ms/);
 });
 
 test('report exposes only the selected adapter kind from its allowlist', () => {
@@ -267,7 +282,7 @@ test('combined large mesh and ping evidence fits transmission cap after explicit
   const diagnostics={ethernet:Array.from({length:16},(_,i)=>({id:`private-port-${i}`,mac:'AA:BB:CC:DD:EE:FF',available:true,enabled:true,status:'Up',maxBitRateMbps:2500,duplexMode:'Full',totalBytesReceived:9007199254740991,totalBytesSent:9007199254740991,totalPacketsReceived:9007199254740991,totalPacketsSent:9007199254740991,reason:'Langer Schnittstellenhinweis '.repeat(20)})),lan:{available:true,dhcpEnabled:true},internet:{available:true,natEnabled:true,portMappingCount:30,ipv6Status:'Connected',lastConnectionError:'ERROR_NONE'}};
   const hosts=Array.from({length:128},(_,i)=>({name:`PrivateHost${i}`,ip:`192.168.1.${i+1}`,guest:i%2===0,wanAccess:i%3?'granted':'denied',priority:i%4===0}));
   const records=Array.from({length:1200},(_,i)=>({type:'ping',at:at(i*40),repeaterHost:targets[i%24].host,results:targets.map(t=>({...t,ok:i%10!==0,ms:i%10?i:null}))}));
-  records.push(...Array.from({length:30},(_,i)=>({type:'fritzbox',at:at(i*2000),deviceTraffic,wlan,diagnostics,hosts,hostCount:128})),...Array.from({length:35},(_,i)=>({type:'event',at:at(i*1000),title:'Auffällig',detail:'Langer Diagnosehinweis '.repeat(30)})));
+  records.push(...Array.from({length:30},(_,i)=>({type:'fritzbox',at:at(i*2000),capture:{reason:'lag',triggeredAt:at(i*2000-500)},wan:{intervalStartedAt:at(i*2000-1000),downloadDeltaBytes:90000000,uploadDeltaBytes:20000000,downstreamMbps:1000,upstreamMbps:250},deviceTraffic,wlan,diagnostics,hosts,hostCount:128})),...Array.from({length:35},(_,i)=>({type:'event',at:at(i*1000),title:'Auffällig',detail:'Langer Diagnosehinweis '.repeat(30)})));
   const {report,summary}=buildDiagnosticReport(fixture(records,{targets,fritzbox:{deviceTraffic,wlan,capabilities,diagnostics,hosts,log:'Routerereignis\n'.repeat(600)}}));
   assert.ok(summary.bytes<=80000);assert.equal(report.targets.length,24);assert.equal(report.targets[0].replies,1080);
   assert.ok(report.warnings.some(value=>/verdichtet|Großer Bericht/.test(value)));
@@ -297,4 +312,78 @@ test('unknown diagnostics, unsupported services and malformed flags or counters 
   for(const key of ['totalBytesReceived','totalBytesSent','totalPacketsReceived','totalPacketsSent','maxBitRateMbps'])assert.equal(current.diagnostics.ethernet[0][key],null);
   assert.equal(current.hostSummary.guestUnknownCount,1);assert.equal(current.hostSummary.blockedUnknownCount,1);assert.equal(current.hostSummary.priorityUnknownCount,1);assert.equal(current.hostSummary.complete,null);
   assert.ok(report.fritzbox.mesh.nodes.every(node=>node.latency.roundTripMs===null));
+});
+
+function reportIncident(overrides={}) {
+  return {id:'private-incident-id',sourceDeviceId:'private-peer-id',appSessionId:'private-app-session',sessionId:'private-router-session',interfaceId:'private-adapter-id',
+    startedAt:at(1000),endedAt:at(4000),updatedAt:at(4500),durationMs:3000,status:'finished',trigger:'ping',affectedSources:['private-peer-id','local'],
+    path:{status:'confirmed',reason:'Pfad zum Router'},topology:{at:at(0)},pathNodes:[],
+    diagnoses:[{category:'pc_path',title:'Auffälligkeit am PC-Pfad',section:'PC bis Router',confidence:'Plausibler Verdacht',support:['Ping-Vergleich'],contradictions:['Router bleibt erreichbar'],missing:['Direkter LAN-Vergleich'],nextTest:'Direkt am Router vergleichen'}],
+    windows:{before:{from:at(0),to:at(1000),complete:true,targets:[]},during:{from:at(1000),to:at(4000),complete:true,targets:[]},after:{from:at(4000),to:at(5000),complete:false,targets:[]}},
+    meshChanges:[],limitations:['Zeitlicher Vergleich belegt allein keine Ursache.'],missing:[],...overrides};
+}
+
+test('incident report removes private peer and session identifiers, network names and password text',()=>{
+  const identifiers=['private-peer-id','private-app-session','private-router-session','private-adapter-id','PrivateMeshRoom','PrivateHeavyDevice','192.168.88.24','AA:BB:CC:DD:EE:19','2001:db8::abcd','password-value','session-token'];
+  const incident=reportIncident({pathNodes:[{id:'private-node-id',name:'PrivateMeshRoom',ip:'192.168.88.24',mac:'AA:BB:CC:DD:EE:19'}],traffic:{devices:[{label:'PrivateHeavyDevice'}]}});
+  const privateText='private-peer-id private-app-session private-router-session private-adapter-id PrivateMeshRoom PrivateHeavyDevice 192.168.88.24 AA:BB:CC:DD:EE:19 2001:db8::abcd password=password-value sid="session-token"';
+  incident.diagnoses[0].support=[privateText];incident.diagnoses[0].nextTest=privateText;incident.path.reason=privateText;
+  const {report}=buildDiagnosticReport(fixture([ping(1000,{ok:true,ms:3})],{incidents:[incident]}));
+  assert.equal(report.incidents.length,1);assert.equal(report.incidents[0].source,'Mess-PC 1');
+  assert.ok(report.incidents[0].affectedSources.includes('Dieser PC'));
+  assert.equal(report.incidents[0].appSessionId,undefined);assert.equal(report.incidents[0].pathNodes,undefined);
+  const encoded=JSON.stringify(report);
+  for(const value of identifiers)assert.ok(!encoded.includes(value),value);
+  assert.match(encoded,/\[entfernt\]/);
+});
+
+test('archived incident evidence is anonymized even when its devices no longer exist in live state',()=>{
+  const incident=reportIncident({pathNodes:[{id:'old-mesh-id',name:'ArchivedPrivateRoom',mac:'AC:DE:48:12:34:56',ip:'192.168.99.50'}],traffic:{devices:[{label:'ArchivedPrivateConsole'}]}});
+  incident.diagnoses[0].support=['ArchivedPrivateRoom und ArchivedPrivateConsole zeigen die Auffälligkeit.'];
+  const monitor=fixture([],{incidents:[]});monitor.listIncidents=()=>[incident];
+  const {report}=buildDiagnosticReport(monitor),encoded=JSON.stringify(report);
+  assert.equal(report.incidents.length,1);
+  for(const value of ['ArchivedPrivateRoom','ArchivedPrivateConsole','old-mesh-id','AC:DE:48:12:34:56','192.168.99.50'])assert.ok(!encoded.includes(value),value);
+});
+
+test('incident traffic phases and capture intervals retain evidence without device names or arbitrary capture fields',()=>{
+  const incident=reportIncident({trafficComparison:{during:{from:at(1000),to:at(4000),pc:{download:{average:0,peak:2,count:2},coverage:{mode:'interval',complete:false,containsBoundaryIntervals:true,coveragePercent:100,observedFrom:at(0),observedTo:at(5000)}},devices:[{id:'archived-traffic-id',label:'PrivatePhaseDevice',ip:'192.168.1.99',peakMbps:50,coverage:{complete:false},peakInterval:{from:at(0),to:at(5000)}}]}},packetCaptures:[{startedAt:at(4000),endedAt:at(5000),relation:'after',status:'stopped',quality:'observed',retransmits:3,sentBytes:0,losses:{events:2},password:'capture-private-password',payload:'private-payload'}]});
+  incident.diagnoses[0].support=['PrivatePhaseDevice archived-traffic-id war im Intervall aktiv.'];
+  const {report}=buildDiagnosticReport(fixture([],{incidents:[incident]})),item=report.incidents[0],encoded=JSON.stringify(report);
+  assert.equal(item.trafficComparison.before,null);assert.equal(item.trafficComparison.during.pc.download.average,0);
+  assert.equal(item.trafficComparison.during.pc.coverage.complete,false);assert.equal(item.trafficComparison.during.devices[0].id,'G1');
+  assert.deepEqual(item.trafficComparison.during.devices[0].peakInterval,{from:at(0),to:at(5000)});
+  assert.equal(item.packetCaptures[0].relation,'after');assert.equal(item.packetCaptures[0].sentBytes,0);assert.equal(item.packetCaptures[0].retransmits,3);assert.equal(item.packetCaptures[0].causeEvidence,false);
+  for(const value of ['PrivatePhaseDevice','archived-traffic-id','192.168.1.99','capture-private-password','private-payload'])assert.ok(!encoded.includes(value),value);
+});
+
+test('four large multilingual incident projections fit the 80000-byte transmission cap with explicit truncation',()=>{
+  const text='Überlastung 網界 '.repeat(100);
+  const coverage={mode:'intervals',observedFrom:at(0),observedTo:at(5000),complete:false,containsBoundaryIntervals:true,coveredMs:5000,coveragePercent:83.333,maxGapMs:1000};
+  const rateStats={average:999.99,peak:1000,count:100,intervalBytes:999999999,estimatedPhaseBytes:8888888};
+  const trafficComparison=Object.fromEntries(['before','during','after'].map(key=>[key,{from:at(0),to:at(5000),pc:{download:rateStats,upload:rateStats,coverage},wan:{download:rateStats,upload:rateStats,coverage},devices:Array.from({length:4},(_,i)=>({id:`private-device-${i}`,peakMbps:999.99,downloadMbps:888.88,uploadMbps:111.11,coverage,peakInterval:{from:at(0),to:at(5000)}}))}]));
+  const packetCaptures=Array.from({length:4},()=>({startedAt:at(0),endedAt:at(5000),relation:'overlap',status:'stopped',quality:'observed',sentPackets:999999,receivedPackets:999999,sentBytes:99999999,receivedBytes:9999999,retransmits:222,losses:{events:10,buffers:20}}));
+  const targets=Array.from({length:24},(_,index)=>({host:`10.10.0.${index+1}`,kind:'repeater',enabled:true}));
+  const windows=Object.fromEntries(['before','during','after'].map(key=>[key,{from:at(0),to:at(5000),complete:true,targets:targets.map(target=>({...target,sourceDeviceId:'private-source',sent:12000,received:11998,maxMs:900.25,avgMs:40.75,p95Ms:88.88,p99Ms:222.22,lossPercent:0.02,measurementErrors:2,measurementGaps:1,actualIntervalMs:250.1}))}]));
+  const incidents=Array.from({length:4},(_,index)=>reportIncident({id:`private-large-${index}`,sourceDeviceId:`private-source-${index}`,path:{status:'confirmed',reason:text},windows,trafficComparison,packetCaptures,
+    diagnoses:Array.from({length:4},()=>({category:'unknown',title:text,section:text,confidence:'Unklar',support:Array(4).fill(text),contradictions:Array(3).fill(text),missing:Array(3).fill(text),nextTest:text})),limitations:Array(5).fill(text),missing:Array(4).fill(text)}));
+  const records=Array.from({length:90},(_,index)=>({type:'ping',at:at(index*600),results:targets.map(target=>({...target,ok:true,ms:index+1}))}));
+  const {report,summary}=buildDiagnosticReport(fixture(records,{targets,incidents}));
+  assert.ok(summary.bytes<=80000);assert.equal(Buffer.byteLength(JSON.stringify(report)),summary.bytes);
+  assert.ok(report.incidents.length>0);assert.ok(report.incidents.length<=4);
+  assert.ok(report.incidentsTruncated||report.incidents.some(item=>item.detailsTruncated===true)||report.warnings.some(value=>/verdichtet|begrenzt|Großer Bericht/.test(value)));
+  assert.equal(report.targets[0].replies,90);assert.equal(report.targets[0].avgMs,45.5);
+});
+
+test('remote ping rounds cannot change local report targets, loss, timeline or notable rounds',()=>{
+  const local=[ping(1000,{ok:true,ms:4}),ping(2000,{ok:true,ms:8})];
+  const remote=[{...ping(1000,{ok:false,ms:null}),remote:true,sourceDeviceId:'private-peer'},
+    {...ping(1500,{ok:true,ms:99999}),remote:true,sourceDeviceId:'private-peer'},
+    {type:'ping',at:at(2000),remote:true,sourceDeviceId:'private-peer',results:[{host:'192.168.77.77',kind:'gateway',ok:false,ms:null}]}];
+  const baseline=buildDiagnosticReport(fixture(local)).report;
+  const {report}=buildDiagnosticReport(fixture([...local,...remote],{incidents:[reportIncident()]}));
+  assert.deepEqual(report.targets,baseline.targets);assert.deepEqual(report.pingTimeline,baseline.pingTimeline);
+  assert.deepEqual(report.notablePingRounds,baseline.notablePingRounds);
+  assert.equal(report.targets[0].lossPercent,0);assert.equal(report.targets[0].avgMs,6);assert.equal(report.targets.length,1);
+  assert.equal(report.incidents.length,1);
 });

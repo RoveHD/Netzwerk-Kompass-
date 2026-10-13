@@ -1,0 +1,17 @@
+.peer-monitor-panel { display: grid; gap: 14px; min-width: 0; padding-block: 18px; }
+.peer-monitor-panel p, .peer-monitor-panel h3 { margin: 0; }
+.peer-monitor-panel [hidden] { display: none !important; }
+.peer-monitor-panel form { display: grid; gap: 12px; }
+.peer-monitor-panel label { display: grid; gap: 6px; min-width: 0; }
+.peer-monitor-panel .peer-toggle { display: flex; align-items: center; gap: 10px; }
+.peer-monitor-panel .peer-toggle input { width: auto; }
+.peer-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(240px,100%),1fr)); gap: 12px; }
+.peer-monitor-panel input, .peer-monitor-panel select, .peer-monitor-panel textarea { box-sizing: border-box; width: 100%; min-width: 0; }
+.peer-monitor-panel textarea { resize: vertical; overflow-wrap: anywhere; font-family: monospace; }
+.peer-monitor-panel button { justify-self: start; white-space: normal; }
+.peer-pairing-central { display: grid; gap: 12px; }
+.peer-state, .peer-message { overflow-wrap: anywhere; }
+.peer-list { display: grid; gap: 10px; max-height: 350px; overflow-y: auto; }
+.peer-list-row { display: grid; gap: 7px; border: 1px solid var(--border, #3b4149); border-radius: 8px; padding: 12px; }
+.peer-list-row small { overflow-wrap: anywhere; }
+.peer-boundary, .peer-monitor-panel small { font-size: 12px; color: var(--muted, #9da5b1); line-height: 1.5; }

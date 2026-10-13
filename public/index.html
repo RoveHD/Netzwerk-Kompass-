@@ -24,6 +24,9 @@
   <link rel="stylesheet" href="/graphite.css">
   <link rel="stylesheet" href="/live-signal.css">
   <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/incident-view.css">
+  <link rel="stylesheet" href="/diagnostic-settings.css">
+  <link rel="stylesheet" href="/peer-monitor.css">
   <script type="module" src="/app.js"></script>
   <script type="module" src="/ui-help.js"></script>
 </head>
@@ -75,10 +78,11 @@
 </section>
 <div class="overview-analysis-grid">
 <section class="panel timeline-panel" aria-labelledby="timeline-heading">
-      <div class="panel-heading"><div><h2 id="timeline-heading">Latenz im Zeitverlauf</h2></div><div class="legend"><span><i class="legend-dot teal"></i>Antwort</span><span><i class="legend-dot orange-dot"></i>Verlust</span><span><i class="legend-dot error-dot"></i>Messfehler</span><span><i class="legend-dot threshold-dot"></i>30 ms</span><span id="timeline-range">Letzte Messwerte</span></div></div>
+      <div class="panel-heading"><div><h2 id="timeline-heading">Latenz im Zeitverlauf</h2></div><div class="legend"><span><i class="legend-dot teal"></i>Antwort</span><span><i class="legend-dot orange-dot"></i>Verlust</span><span><i class="legend-dot error-dot"></i>Messfehler</span><span><i class="legend-dot threshold-dot"></i>100 ms</span><span id="timeline-range">Letzte Messwerte</span></div></div>
       <div class="chart-wrap"><svg id="latency-chart" viewBox="0 0 900 190" preserveAspectRatio="none" role="img" aria-label="Latenzverlauf; fehlende Punkte markieren Paketverlust"><text x="450" y="96" text-anchor="middle" class="chart-empty">Warte auf Messwerte</text></svg></div>
       <p id="chart-note" class="chart-note"></p>
       <a class="overview-history-link" href="#history">Alle Ziele im Verlauf vergleichen </a>
+      <button id="lag-traffic-open" class="text-button" type="button">Wer hat beim Lag Daten übertragen?</button>
     </section>
 <section class="panel overview-quality-panel"><div class="panel-heading"><h2>Verbindungsqualität</h2><button class="info-tip" type="button" data-help="Werte des auffälligsten aktiven Internetziels; lokale Messfehler werden nicht als Ping-Verlust gewertet." aria-label="Informationen zur Verbindungsqualität">ⓘ</button></div><div id="overview-quality"></div><div class="overview-router"><span>Router</span><strong id="router-value" class="measurement">–</strong><span id="router-status" class="pill pill-muted">Warte auf Daten</span><span id="router-detail" class="sr-only">Noch keine Schnittstelle</span></div><div class="overview-insights">
 
@@ -90,6 +94,7 @@
 
 <div class="overview-support-grid"><section class="panel overview-traffic-panel"><div class="panel-heading"><h2>Download / Upload</h2><div class="legend"><span><i class="legend-dot teal"></i>Download</span><span><i class="legend-dot upload-dot"></i>Upload</span></div></div><svg id="overview-traffic-chart" role="img" aria-label="Gemessener PC-Datenverkehr im Zeitverlauf"></svg><a class="text-button" href="#history">Datenverkehr im Verlauf</a></section><section class="panel overview-tests-panel"><div class="panel-heading"><h2>Letzte Messungen</h2></div><div id="overview-recent-tests"></div><a class="text-button" href="#tests">Tests öffnen</a></section></div>
 <div class="overview-bottom-grid"><section class="panel overview-devices-panel"><div class="panel-heading"><h2>Geräte im Netzwerk</h2><a class="text-button" href="#devices">Alle Geräte</a></div><div id="overview-devices"></div></section><section class="panel events-panel" aria-labelledby="events-heading"><div class="panel-heading"><div><h2 id="events-heading">Ereignisse</h2></div><span id="event-count" class="count-badge">0</span></div><div id="events-list" class="events-list"><div class="empty-state compact">Noch keine Ereignisse.</div></div><button id="events-show-all" class="text-button" type="button" hidden>Alle Ereignisse anzeigen</button></section></div><div class="overview-context"><details><summary>Messpfad</summary><aside class="route-banner" aria-label="Zugeordneter Messpfad"><div><strong id="route-title">PC-Anschluss noch nicht zugeordnet</strong><p id="route-path">Wähle den Repeater am PC unter Geräte &amp; Repeater.</p><span id="route-detail" class="sr-only"></span></div><button id="route-info" class="info-tip" type="button" data-help="Alle markierten Repeater werden unabhängig gemessen. Ihre Verbindung untereinander wird aus Ping-Werten nicht abgeleitet." aria-label="Informationen zum Messpfad">ⓘ</button></aside></details><a id="game-overview" class="game-overview" href="#games" hidden><strong>Spiele &amp; Paket-Tracking</strong><span>Spiel auswählen und seinen Netzwerkverkehr beobachten</span></a></div>
+<section class="panel incident-overview-panel" aria-labelledby="incident-overview-title"><div class="panel-heading"><h2 id="incident-overview-title">Vorfälle</h2><button class="text-button" type="button" id="incident-history-open">Alle Vorfälle</button></div><div id="incident-overview" class="incident-overview-list" aria-live="polite"><p class="incident-muted">Vorfälle werden geladen …</p></div></section>
 </div>
 <div id="page-devices" class="app-page" data-page="devices" hidden>
 <section class="panel" aria-labelledby="adapter-health-heading"><div class="panel-heading"><div><h2 id="adapter-health-heading">Netzwerkkarte: Fehler &amp; verworfene Pakete</h2></div></div><div id="adapter-health"></div><a href="#history" class="overview-history-link">Gespeicherte Zähler und Netzwerkwechsel im Verlauf ansehen</a></section>
@@ -123,6 +128,7 @@
         <button id="history-tab-devices" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="devices">Geräte &amp; Scans</button>
         <button id="history-tab-speed" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="speed">Leistungstests</button>
         <button id="history-tab-events" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="events">Ereignisse</button>
+        <button id="history-tab-incidents" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="incidents">Vorfälle</button>
         <button id="history-tab-fritzbox" class="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-view" data-history-tab="fritzbox">FRITZ!Box</button>
       </nav>
       <div id="history-view" class="history-view" role="tabpanel" aria-labelledby="history-tab-connection" tabindex="0"><div class="history-placeholder">Verlauf wird geladen …</div></div>
@@ -134,12 +140,15 @@
       <div class="panel-heading"><div><h2 id="fritzbox-heading">FRITZ!Box-Zentrale</h2><p class="panel-subtitle fritzbox-subtitle">Gesamtverkehr, Einzelgeräte, Mesh, WLAN und Anschlussdaten direkt aus deiner Box.</p></div><span id="fritzbox-status" class="pill pill-muted">Nicht verbunden</span></div>
       <form id="fritzbox-login" class="fritzbox-login" autocomplete="off">
         <div class="fritzbox-login-fields"><div><label for="fritzbox-host">Router-Adresse</label><input id="fritzbox-host" name="host" type="text" value="fritz.box" maxlength="253" autocomplete="off"></div><div><label for="fritzbox-password">FRITZ!Box-Kennwort</label><input id="fritzbox-password" name="password" type="password" maxlength="256" required autocomplete="off" aria-describedby="fritzbox-login-help"></div><button id="fritzbox-connect" class="button button-primary" type="submit" disabled>Verbinden und lesen</button></div>
+        <label class="fritzbox-remember-option"><input id="fritzbox-remember" name="remember" type="checkbox"> Anmeldung auf diesem Windows-PC geschützt speichern</label>
+        <p class="field-help">Optional und standardmäßig aus. Windows schützt das Kennwort mit DPAPI; du kannst eine gespeicherte Anmeldung unter Einstellungen entfernen.</p>
         <p id="fritzbox-login-help" class="fritzbox-login-help"><span data-help="Deine FRITZ!Box fragt nur nach einem Kennwort? Dann reicht hier ebenfalls das Kennwort. Der zugehörige Benutzer wird automatisch ermittelt, sofern die Box ihn eindeutig meldet.">Der Benutzer wird nach Möglichkeit automatisch erkannt.</span></p>
         <details class="fritzbox-user-option"><summary>Mit einem bestimmten Benutzer anmelden (optional)</summary><label for="fritzbox-username">FRITZ!Box-Benutzername (optional)</label><input id="fritzbox-username" name="username" type="text" maxlength="120" placeholder="Leer lassen für automatische Erkennung" autocomplete="off"><p>Bei mehreren Konten oder fehlender automatischer Erkennung den Namen unter „System → FRITZ!Box-Benutzer“ nachsehen.</p></details>
       </form>
-      <p class="fritzbox-guidance"><span data-help="Die Anmeldung ist freiwillig. Für das Auslesen muss „Zugriff für Anwendungen zulassen“ in der FRITZ!Box aktiviert sein und der Zugang die nötigen Rechte besitzen. Das Kennwort bleibt nur für die laufende Verbindung im Arbeitsspeicher und wird nach jedem Versuch aus dem Feld gelöscht. Die App ändert keine Router-Einstellungen.">Aktiviere „Zugriff für Anwendungen zulassen“ in deiner FRITZ!Box.</span></p>
+      <p class="fritzbox-guidance"><span data-help="Die Anmeldung ist freiwillig. Für das Auslesen muss „Zugriff für Anwendungen zulassen“ in der FRITZ!Box aktiviert sein und der Zugang die nötigen Rechte besitzen. Ohne gesetzte Speicher-Checkbox bleibt das Kennwort nur für die laufende Verbindung im Arbeitsspeicher und wird nach jedem Versuch aus dem Feld gelöscht. Die App ändert keine Router-Einstellungen.">Aktiviere „Zugriff für Anwendungen zulassen“ in deiner FRITZ!Box.</span></p>
       <div id="fritzbox-error" class="fritzbox-error" role="alert" hidden></div>
       <div class="fritzbox-actions"><span id="fritzbox-updated" class="fritzbox-updated">Noch keine Routerdaten geladen</span><div><button id="fritzbox-refresh" class="button button-secondary" type="button" disabled>Aktualisieren</button><button id="fritzbox-disconnect" class="button button-quiet" type="button" disabled>Trennen</button></div></div>
+      <p class="field-help">Automatisch einmal pro Minute, bei Lag-Spitzen gezielt bis zu zweimal pro Minute. Geräteverkehr zeigt den Durchschnitt des Messintervalls; kurze Spitzen können darin untergehen.</p>
       <div id="fritzbox-data" class="fritzbox-data"><div class="history-empty">Verbinde optional mit deiner FRITZ!Box, um verfügbare interne Routerdaten zu lesen.</div></div>
     </section>
 </div>
@@ -216,6 +225,10 @@
   <section class="panel" aria-labelledby="game-custom-heading"><div class="panel-heading"><h2 id="game-custom-heading">Ein Spiel wird nicht erkannt?</h2></div><p class="game-muted"><span data-help="Steam- und Epic-Installationen sowie bekannte Spielprozesse werden automatisch zugeordnet. Weitere Spiele kannst du mit ihrem EXE-Dateinamen ergänzen. Den Namen findest du im Windows-Task-Manager unter „Details“.">Ergänze weitere Spiele mit ihrem EXE-Dateinamen.</span></p><form id="game-custom-form" class="game-custom-form"><label>Spielname<input id="game-custom-name" name="name" maxlength="80" required placeholder="Mein Spiel" autocomplete="off"></label><label>EXE-Dateiname<input id="game-custom-exe" name="executable" maxlength="120" required placeholder="MeinSpiel.exe" autocomplete="off" spellcheck="false"></label><button class="button button-secondary" type="submit" disabled>Spiel hinzufügen</button></form><div id="game-custom-list"></div><p class="game-help"><span data-help="Nur den Dateinamen eintragen, keinen Pfad oder Startbefehl. Gemeinsame Programme wie javaw.exe können mehrere verschiedene Spiele starten und sind deshalb ohne eigene Zuordnung nicht eindeutig.">Trage nur den Dateinamen ein.</span></p></section>
 </div>
 <div id="page-settings" class="app-page" data-page="settings" hidden>
+  <section class="panel" aria-labelledby="measurement-load-heading"><div class="panel-heading"><div><h2 id="measurement-load-heading">Sparsame Hintergrundmessung</h2></div></div>
+    <p class="panel-subtitle">Im Standardmodus kleine Pings etwa jede Sekunde; DNS und angemeldete FRITZ!Box einmal pro Minute. Bei Lag-Spitzen wird die Box gezielt häufiger abgefragt, höchstens alle 30 Sekunden. Speedtests und Dauerbelastung starten nur per Klick.</p>
+    <p class="honesty-note">„Überwachung stoppen“ pausiert Pings, DNS und automatische Routerabfragen. Lokale Adapterabfragen und die Spieleerkennung laufen weiter. Für einen Vergleich ganz ohne App-Last das Programm beenden.</p>
+  </section>
   <section class="panel" aria-labelledby="startup-heading"><div class="panel-heading"><div><h2 id="startup-heading">Mit Windows starten</h2></div></div>
     <label class="startup-option"><input id="startup-enabled" type="checkbox" checked disabled> Netzwerk-Kompass beim Windows-Anmelden automatisch starten</label>
     <p id="startup-status" class="panel-subtitle" role="status">Autostart wird geprüft …</p><p class="honesty-note"><span data-help="Die portable EXE muss an ihrem Speicherort bleiben. Beim nächsten manuellen Start wird ihr gespeicherter Pfad aktualisiert.">Lass die portable EXE an ihrem Speicherort.</span></p>
@@ -224,6 +237,7 @@
     <p id="storage-status" class="panel-subtitle">Speicherstatus wird geladen …</p><p class="honesty-note"><span data-help="Ein unerwartetes Ende belegt noch keinen PC-Absturz: Auch Stromausfall oder erzwungenes Beenden kommen infrage. Nicht gemessene Zeiträume sind keine nachgewiesenen Netzausfälle.">Ein unerwartetes Ende belegt keinen PC-Absturz.</span></p>
     <div id="session-list" class="table-scroll"></div>
   </section>
+  <div id="diagnostic-settings"></div>
 </div>
 <p class="page-footnote">PC-Verkehr misst den gewählten Adapter. FRITZ!Box-WAN und Geräte-Internetverkehr werden getrennt ausgewiesen, soweit die Box diese Daten bereitstellt.</p>
 </main>

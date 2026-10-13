@@ -1,23 +1,44 @@
 .mesh-topology { min-width:0; max-width:100%; margin:16px 0 24px; }
 .mesh-topology-note, .mesh-topology-summary { color:var(--muted); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
 .mesh-topology-scroll { width:100%; max-width:100%; max-height:560px; overflow:auto; border:1px solid var(--border, var(--line)); border-radius:6px; background:var(--panel); }
-.mesh-topology-canvas { position:relative; }
+.mesh-topology-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0; }
+.mesh-topology-toolbar button { min-height:36px; padding:6px 12px; cursor:pointer; }
+.mesh-zoom-value { min-width:54px; text-align:center; font-variant-numeric:tabular-nums; color:var(--muted); }
+.mesh-topology-plane { position:relative; overflow:hidden; }
+.mesh-topology-canvas { position:absolute; left:0; top:0; transform-origin:top left; }
 .mesh-topology-canvas > svg { position:absolute; inset:0; }
+.mesh-link-group { cursor:pointer; }
 .mesh-link { fill:none; stroke:var(--muted); stroke-width:2; }
 .mesh-link-wlan { stroke:var(--muted); stroke-dasharray:6 4; }
 .mesh-link-disconnected { stroke:var(--muted); opacity:.6; stroke-dasharray:3 7; }
-.mesh-link-label, .mesh-link-rate { fill:var(--muted); font-size:12px; paint-order:stroke; stroke:var(--muted); stroke-width:5px; stroke-linejoin:round; }
-.mesh-link-rate { font-size:12px; }
-.mesh-node { position:absolute; width:220px; height:90px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; padding:16px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--muted); text-align:left; cursor:pointer; overflow:hidden; }
+.mesh-link-extra { stroke-dasharray:3 4; opacity:.75; }
+.mesh-link-pc-path { stroke:var(--accent, var(--text)); stroke-width:4; }
+.mesh-link-hit { fill:none; stroke:transparent; stroke-width:16; pointer-events:stroke; }
+.mesh-link-group.is-selected .mesh-link, .mesh-link-group:focus-visible .mesh-link { stroke:var(--accent, var(--text)); stroke-width:5; opacity:1; }
+.mesh-link-group:focus-visible { outline:none; }
+.mesh-link-label-background { fill:var(--panel); stroke:var(--border, var(--line)); stroke-width:1; }
+.mesh-topology-evidence { padding:8px 12px; border-left:3px solid var(--accent, var(--line)); overflow-wrap:anywhere; }
+.mesh-topology-incident { display:block; margin:8px 0; overflow-wrap:anywhere; }
+.mesh-link-label, .mesh-link-rate { fill:var(--text, var(--muted)); font-size:12px; font-family:inherit; }
+.mesh-link-label { font-weight:600; }
+.mesh-link-rate { fill:var(--muted); font-variant-numeric:tabular-nums; }
+.mesh-node { position:absolute; box-sizing:border-box; width:220px; height:104px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; padding:14px 16px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--text, var(--muted)); text-align:left; cursor:pointer; overflow:hidden; }
 .mesh-node strong, .mesh-node-address { display:block; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mesh-node-role { font-size:12px; color:var(--muted); letter-spacing:0; }
 .mesh-node-address { font-size:12px; color:var(--muted); }
-.mesh-node-master { border-color:var(--line); }
-.mesh-node.is-selected { outline:2px solid var(--line); outline-offset:2px; }
-.mesh-node:focus-visible, .mesh-topology-scroll:focus-visible { outline:3px solid var(--line); outline-offset:2px; }
+.mesh-node-master { border-left:4px solid var(--accent, var(--line)); }
+.mesh-node-extra { position:absolute; right:8px; top:8px; font-size:10px; padding:2px 4px; background:var(--panel); color:var(--muted); border:1px solid var(--line); border-radius:3px; }
+.mesh-node:has(.mesh-node-extra) .mesh-node-role { max-width:132px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mesh-node.is-selected { outline:2px solid var(--accent, var(--line)); outline-offset:2px; }
+.mesh-node:focus-visible, .mesh-topology-scroll:focus-visible { outline:3px solid var(--accent, var(--line)); outline-offset:2px; }
 .mesh-topology-detail { margin-top:16px; padding:16px; border:1px solid var(--border, var(--line)); border-radius:6px; overflow-wrap:anywhere; }
 .mesh-topology-detail h4 { margin:0 0 8px; }
 .mesh-topology-detail p { margin:8px 0; font-size:13px; line-height:1.6; }
+.mesh-topology-detail button, .mesh-extra-link-list button { display:block; max-width:100%; margin:8px 0; padding:8px 12px; text-align:left; white-space:normal; overflow-wrap:anywhere; cursor:pointer; }
+.mesh-extra-links { margin-top:12px; min-width:0; }
+.mesh-extra-links summary { cursor:pointer; color:var(--text, var(--muted)); font-size:13px; }
+.mesh-extra-link-list { max-height:280px; overflow:auto; }
+@media (max-width:480px) { .mesh-topology-scroll { max-height:420px; } .mesh-topology-toolbar { gap:6px; } .mesh-topology-toolbar button { padding:6px 9px; } .mesh-topology-detail { padding:12px; } }
 .mesh-history-control { display:grid; gap:8px; margin:16px 0; min-width:0; }
 .mesh-history-control select { max-width:100%; min-width:0; width:100%; }
 .fritzbox-capabilities { margin:16px 0; min-width:0; }

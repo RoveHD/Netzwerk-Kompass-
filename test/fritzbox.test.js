@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FritzBoxClient, createDigestAuthorization, parseXml, isPrivateRouterIP, normalizeMesh, normalizeDeviceTraffic } from '../lib/fritzbox.js';
+import { deriveWanTraffic } from '../lib/device-traffic.js';
 
 const challenge='Digest realm="fritz.box", nonce="test-nonce", algorithm=MD5, qop="auth"';
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[char]));
@@ -9,7 +10,7 @@ const fault=(code=606,description='Access denied')=>`<s:Envelope xmlns:s="http:/
 const services=['DeviceInfo','WANCommonInterfaceConfig','WANIPConnection','WANDSLInterfaceConfig','Hosts'];
 const description=(names=services,control=name=>`/control/${name}`)=>`<?xml version="1.0"?><root xmlns="urn:dslforum-org:device-1-0"><device><serviceList>${names.map(name=>`<service><serviceType>urn:dslforum-org:service:${name}:1</serviceType><serviceId>urn:serviceId:${name}</serviceId><controlURL>${escape(control(name))}</controlURL><eventSubURL>/event/${name}</eventSubURL><SCPDURL>/${name}.xml</SCPDURL></service>`).join('')}</serviceList></device></root>`;
 const credentials={host:'fritz.box',username:'router-user',password:'SuperSecret!991'};
-function fixture({override,desc=description(),publicDevice=false,basic=false,wrong=false,hostPath='/hostlist.lua?sid=hidden-host-token',meshPath='/mesh.lua?sid=hidden-mesh-token',password=credentials.password,username=credentials.username}={}) {
+function fixture({override,desc=description(),publicDevice=false,basic=false,wrong=false,hostPath='/hostlist.lua?sid=hidden-host-token',meshPath='/mesh.lua?sid=hidden-mesh-token',password=credentials.password,username=credentials.username,now}={}) {
   const calls=[],lookups=[];
   const requestImpl=async(url,options)=>{
     const call={url:new URL(url),...options};calls.push(call);
@@ -43,7 +44,7 @@ function fixture({override,desc=description(),publicDevice=false,basic=false,wro
     return {statusCode:404,headers:{},body:''};
   };
   const lookupImpl=async(host,options)=>{lookups.push({host,options});return [{address:'192.168.1.1',family:4}];};
-  return {client:new FritzBoxClient({requestImpl,lookupImpl}),calls,lookups,credentials:{...credentials,username,password}};
+  return {client:new FritzBoxClient({requestImpl,lookupImpl,now}),calls,lookups,credentials:{...credentials,username,password}};
 }
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 const scpd=actions=>({statusCode:200,headers:{},body:`<scpd><actionList>${actions.map(name=>`<action><name>${name}</name></action>`).join('')}</actionList></scpd>`});
@@ -303,6 +304,98 @@ test('Authenticated Mesh traffic snapshot exports only reported bytes without ex
   const snapshot=await f.client.connect(f.credentials);assert.equal(snapshot.deviceTraffic.length,1);assert.equal(snapshot.deviceTraffic[0].available,true);assert.equal(snapshot.deviceTraffic[0].totalBytesReceived,1250000);assert.equal(snapshot.deviceTrafficCapability.available,true);
   assert.ok(!JSON.stringify(snapshot).includes('must-not-export'));assert.ok(!JSON.stringify(snapshot).includes(credentials.password));assert.ok(f.calls.filter(call=>call.method==='POST').every(call=>!/#(?:Set|GetSecurityKeys|GetConfigFile)/.test(call.headers.SOAPAction)));f.client.disconnect();
   const unsupported=fixture();const unknown=await unsupported.client.connect(unsupported.credentials);assert.equal(unknown.deviceTrafficCapability.available,false);assert.ok(unknown.deviceTraffic.every(item=>item.totalBytesReceived===null));unsupported.client.disconnect();
+});
+
+test('Traffic-only polls reuse the pinned Mesh path and skip complete router diagnostics',async()=>{
+  let clock=1700000000000,routerTime=clock;
+  const f=fixture({now:()=>clock,override:call=>call.url.pathname==='/mesh.lua'?{statusCode:200,headers:{},body:JSON.stringify({schema_version:'8.7',nodes:[{uid:'pc',device_mac_address:'AA:BB:CC:DD:EE:FF',device_name:'Gaming-PC',metrics:{wan_counters:{last_update:routerTime,bytes:{rx:1250000,tx:250000}}}}],password:credentials.password,token:'hidden-mesh-token'})}:null});
+  await f.client.connect(f.credentials);const initial=f.calls.length;
+  clock+=2000;
+  const snapshot=await f.client.pollTraffic();
+  const calls=f.calls.slice(initial);
+  assert.equal(calls.length,4);assert.equal(calls.filter(call=>call.method==='GET').length,1);
+  assert.deepEqual(calls.filter(call=>call.method==='POST').map(call=>call.headers.SOAPAction.split('#')[1].replace('"','')).sort(),['GetInfo','GetTotalBytesReceived','GetTotalBytesSent'].sort());
+  assert.ok(calls.every(call=>call.url.pathname!=='/hostlist.lua'&&!call.url.pathname.endsWith('.xml')));
+  assert.equal(snapshot.kind,'traffic');assert.equal(snapshot.collection.requests,4);assert.ok(snapshot.collection.responseBytes>0);assert.equal(snapshot.collection.byteScope,'response-body');
+  assert.equal(snapshot.collection.from,new Date(clock).toISOString());assert.equal(snapshot.collection.to,snapshot.updatedAt);
+  assert.equal(snapshot.wan.source,'tr064-wan-byte-counters');assert.equal(snapshot.wan.sampling.counterUpdateFrequencyKnown,false);assert.equal(snapshot.wan.downstreamMbps,100);
+  assert.equal(snapshot.deviceTraffic[0].routerTimestampAdvanced,false);assert.equal(snapshot.deviceTraffic[0].freshness,'unchanged-router-timestamp');assert.equal(snapshot.deviceTraffic[0].counterAgeMs,2000);
+  assert.equal(snapshot.deviceTraffic[0].sampling.basis,'router-counter-timestamp');assert.equal(snapshot.deviceTraffic[0].observedAt,snapshot.updatedAt);
+  assert.equal(snapshot.log,undefined);assert.equal(snapshot.mesh,undefined);assert.equal(snapshot.hosts,undefined);assert.equal(snapshot.diagnostics,undefined);
+  assert.ok(!JSON.stringify(snapshot).includes(credentials.password));assert.ok(!JSON.stringify(snapshot).includes('hidden-mesh-token'));assert.ok(!JSON.stringify(snapshot).includes('sid='));
+  clock+=2000;routerTime=clock;
+  const advanced=await f.client.pollTraffic();assert.equal(advanced.deviceTraffic[0].routerTimestampAdvanced,true);assert.equal(advanced.deviceTraffic[0].counterAgeMs,0);
+  f.client.disconnect();
+});
+
+test('WAN-only traffic polls omit unqueried device fields and preserve the last device observation',async()=>{
+  let timestamp=1700000000000;
+  const f=fixture({override:call=>call.url.pathname==='/mesh.lua'?{statusCode:200,headers:{},body:JSON.stringify({nodes:[{uid:'pc',device_mac_address:'AA:BB:CC:DD:EE:FF',metrics:{wan_counters:{last_update:timestamp,bytes:{rx:10,tx:5}}}}]})}:null});
+  await f.client.connect(f.credentials);const initial=f.calls.length;
+  const wan=await f.client.pollTraffic({includeDevices:false});
+  assert.equal(f.calls.length-initial,3);assert.equal(wan.deviceTraffic,undefined);assert.equal(wan.deviceTrafficCapability,undefined);
+  timestamp+=1000;const devices=await f.client.pollTraffic();assert.equal(devices.deviceTraffic[0].routerTimestampAdvanced,true);
+  f.client.disconnect();
+});
+
+test('Slow login diagnostics preserve the earlier actual WAN counter window for the first fast rate',async()=>{
+  const start=1700000000000;let clock=start,received=0;
+  const f=fixture({now:()=>clock,override:call=>{
+    if(call.url.pathname==='/hostlist.lua')clock+=10000;
+    if(call.headers.SOAPAction?.includes('#GetTotalBytesReceived')&&call.headers.Authorization)return {statusCode:200,headers:{},body:response('GetTotalBytesReceived',{NewTotalBytesReceived:received})};
+    return null;
+  }});
+  try {
+    const initial=await f.client.connect(f.credentials);
+    assert.equal(initial.updatedAt,new Date(start+10000).toISOString());assert.equal(initial.wan.sampling.from,new Date(start).toISOString());assert.equal(initial.wan.sampling.to,new Date(start).toISOString());
+    received=15000000;clock+=2000;
+    const current=await f.client.pollTraffic({includeDevices:false});
+    const measured=deriveWanTraffic(initial.wan,current.wan,{previousSessionId:'same',currentSessionId:'same',previousUptimeSeconds:initial.device.uptimeSeconds,currentUptimeSeconds:current.device.uptimeSeconds});
+    assert.equal(measured.elapsedMs,12000);assert.equal(measured.downloadMbps,10,'15 MB accumulated across twelve seconds must not become a two-second 60 Mbps peak');
+    assert.equal(current.wan.counterUpdatedAtAvailable,undefined);assert.equal(current.wan.sampling.counterUpdatedAtAvailable,false);
+  }finally{f.client.disconnect();}
+});
+
+test('Traffic polling shares full-poll mutex and disconnect cancels its requests',async()=>{
+  let block=false;const hold=deferred(),entered=deferred();
+  const f=fixture({override:async call=>{
+    if(block&&call.url.pathname==='/control/DeviceInfo'&&call.headers.SOAPAction.includes('#GetInfo')){entered.resolve();await hold.promise;}
+    return null;
+  }});
+  await f.client.connect(f.credentials);block=true;
+  const pending=f.client.pollTraffic();await entered.promise;
+  await assert.rejects(f.client.poll(),{code:'FRITZ_BUSY'});await assert.rejects(f.client.pollTraffic(),{code:'FRITZ_BUSY'});
+  f.client.disconnect();await assert.rejects(pending,{code:'FRITZ_CANCELLED'});hold.resolve();assert.equal(f.client.connected,false);
+});
+
+test('A missing Mesh response never republishes cached byte counters and renews only its private path',async()=>{
+  let missing=false;
+  const f=fixture({override:call=>call.url.pathname==='/mesh.lua'?missing?{statusCode:404,headers:{},body:''}:{statusCode:200,headers:{},body:JSON.stringify({nodes:[{uid:'pc',device_mac_address:'AA:BB:CC:DD:EE:FF',metrics:{wan_counters:{last_update:1700000000000,bytes:{rx:10,tx:5}}}}]})}:null});
+  await f.client.connect(f.credentials);missing=true;
+  const failed=await f.client.pollTraffic();assert.equal(failed.deviceTrafficCapability.available,false);assert.ok(failed.deviceTraffic.every(row=>row.available===false&&row.totalBytesReceived===null));
+  assert.equal(failed.warnings.length,1);const start=f.calls.length;
+  missing=false;const recovered=await f.client.pollTraffic();assert.equal(recovered.deviceTrafficCapability.available,true);
+  assert.equal(f.calls.slice(start).filter(call=>call.headers.SOAPAction?.includes('#X_AVM-DE_GetMeshListPath')).length,1);
+  assert.ok(f.calls.slice(start).every(call=>call.url.hostname==='192.168.1.1'));
+  f.client.disconnect();
+});
+
+test('Traffic actions absent or rejected by the router remain unknown and stop repeated unsupported calls',async()=>{
+  let deny=false;
+  const f=fixture({override:call=>deny&&call.headers.SOAPAction?.includes('#GetTotalBytesReceived')?{statusCode:500,headers:{},body:fault(401)}:null});
+  await f.client.connect(f.credentials);deny=true;
+  const failed=await f.client.pollTraffic({includeDevices:false});assert.equal(failed.wan.totalBytesReceived,null);assert.equal(failed.wan.totalBytesSent,654321);
+  const start=f.calls.length;const next=await f.client.pollTraffic({includeDevices:false});assert.equal(next.wan.totalBytesReceived,null);
+  assert.ok(f.calls.slice(start).every(call=>!call.headers.SOAPAction.includes('#GetTotalBytesReceived')));
+  f.client.disconnect();
+});
+
+test('Traffic snapshots report null router uptime and WAN totals when GetInfo or byte data are missing',async()=>{
+  let missing=false;
+  const f=fixture({override:call=>missing&&call.method==='POST'&&['GetInfo','GetTotalBytesReceived','GetTotalBytesSent'].some(action=>call.headers.SOAPAction.includes('#'+action+'"'))?{statusCode:200,headers:{},body:response(call.headers.SOAPAction.split('#')[1].replace('"',''),{})}:null});
+  await f.client.connect(f.credentials);missing=true;
+  const snapshot=await f.client.pollTraffic({includeDevices:false});assert.equal(snapshot.device.uptimeSeconds,null);assert.equal(snapshot.wan.totalBytesReceived,null);assert.equal(snapshot.wan.totalBytesSent,null);
+  f.client.disconnect();
 });
 
 test('Read diagnostics preserve two LAN instances, DHCP, host metadata and WAN detail without secrets',async()=>{

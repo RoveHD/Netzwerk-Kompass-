@@ -22,12 +22,12 @@ function createServerLifecycle({ appDir, nodePath, dataDir, exePath, env, noAuto
   function start() {
     if (startPromise) return startPromise;
     startPromise = new Promise((resolve, reject) => {
-      let settled = false, lines;
+      let settled = false, startedSuccessfully = false, lines;
       const finish = (error, url) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (error) reject(error); else resolve(url);
+        if (error) reject(error); else { startedSuccessfully = true; resolve(url); }
       };
       const timer = setTimeout(() => finish(new Error('Der lokale Server hat nicht rechtzeitig gestartet.')), startupTimeoutMs);
       try {
@@ -43,7 +43,7 @@ function createServerLifecycle({ appDir, nodePath, dataDir, exePath, env, noAuto
             closeResolve(closeResult);
             const error = new Error(`Der lokale Server wurde beendet (${code ?? signal ?? 'unbekannt'}).`);
             if (!settled) finish(error);
-            else if (!stopping) onUnexpectedExit(error, closeResult);
+            else if (!stopping && startedSuccessfully) onUnexpectedExit(error, closeResult);
           });
         });
         child.once('error', error => finish(error));

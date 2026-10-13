@@ -18,11 +18,14 @@ import { resolvePingSelection, togglePingSelection, selectPingTarget, pingTarget
 import { jitterFor, summarizePingHistory } from './ping-statistics.js';
 import { renderPingChart, niceAxisTicks } from './ping-chart.js';
 import { createLagPhaseSection } from './lag-incidents.js';
+import { initIncidentViews } from './incident-view.js';
+import { initDiagnosticSettings } from './diagnostic-settings.js';
 
 const $ = (selector) => document.querySelector(selector);
 const apiToken = document.querySelector('meta[name="api-token"]')?.content || '';
 const state = { value: null, generation: 0, busy: new Set(), error: '', pollTimer: null, toastTimer: null, history: { records: [], hours: 1, tab: 'connection', pingHosts: null, pingTargets: new Map(), pingJitter: false, requestGate: createHistoryRequestGate(), loaded: false, loading: false, truncated: false, retentionDays: 7, error: '', updatedAt: null } };
-const navigation = initNavigation({ onChange: page => { setText('#page-title', page.title); setText('.intro', page.intro); restoreScroll($('#page-'+page.id));for(const id of ['history-view','fritzbox-data','session-list'])restoreScroll($('#'+id)); if(page.id==='history')queueMicrotask(()=>loadHistory()); } });
+let incidentViews = null, diagnosticSettings = null;
+const navigation = initNavigation({ onChange: page => { setText('#page-title', page.title); setText('.intro', page.intro); restoreScroll($('#page-'+page.id));for(const id of ['history-view','fritzbox-data','session-list'])restoreScroll($('#'+id)); if(page.id==='history')queueMicrotask(()=>loadHistory()); if(page.id==='overview')queueMicrotask(()=>incidentViews?.renderOverview()); } });
 
 function setText(selector, value) { const el = $(selector); if (el) { if (el.matches('.summary-value, .traffic-readings strong')) setMeasurement(el, value, ['#download-value','#upload-value'].includes(selector) ? 'Mbit/s' : ''); else { const text = value == null || value === '' ? '–' : String(value); if (el.textContent !== text) el.textContent = text; } } }
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = String(text); return node; }
@@ -191,19 +194,19 @@ function renderChart(s) {
   const samples = safeArray(target?.samples).slice(-50); const W = svg.clientWidth || 900; const H = svg.clientHeight || 190; const pad = { l: 58, r: 10, t: 14, b: 24 };
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   if (!samples.length) { setText('#timeline-range', 'Warte auf neue Messwerte'); const t = document.createElementNS('http://www.w3.org/2000/svg', 'text'); t.setAttribute('x', W / 2); t.setAttribute('y', H / 2); t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 'chart-empty'); t.textContent = s.monitoring ? 'Warte auf erste Messung' : 'Warte auf Messwerte'; svg.append(t); return; }
-  const values = samples.filter((x) => x.ok && numeric(x.ms)).map((x) => Number(x.ms)); const ticks = niceAxisTicks(Math.max(30, ...values)); const max = ticks.at(-1) || 30;
+  const values = samples.filter((x) => x.ok && numeric(x.ms)).map((x) => Number(x.ms)); const ticks = niceAxisTicks(Math.max(100, ...values)); const max = ticks.at(-1) || 100;
   const y = (v) => H - pad.b - Math.max(0, Math.min(1, v / max)) * (H - pad.t - pad.b);
   ticks.forEach((tick) => { const py = y(tick); const line = document.createElementNS(svg.namespaceURI, 'line'); line.setAttribute('x1', pad.l); line.setAttribute('x2', W - pad.r); line.setAttribute('y1', py); line.setAttribute('y2', py); line.setAttribute('class', 'chart-grid'); line.setAttribute('style', 'stroke:#24282C;stroke-width:1;stroke-dasharray:none'); svg.append(line); const label = document.createElementNS(svg.namespaceURI, 'text'); label.setAttribute('x', pad.l - 8); label.setAttribute('y', py + 4); label.setAttribute('text-anchor', 'end'); label.setAttribute('class', 'chart-label'); label.textContent = `${fmt(tick, 0)} ms`; svg.append(label); });
-  const thresholdY = y(30); const threshold = document.createElementNS(svg.namespaceURI, 'line'); threshold.setAttribute('x1', pad.l); threshold.setAttribute('x2', W - pad.r); threshold.setAttribute('y1', thresholdY); threshold.setAttribute('y2', thresholdY); threshold.setAttribute('class', 'chart-threshold'); threshold.setAttribute('style', 'stroke:var(--orange,#E0A84A);stroke-width:1;stroke-dasharray:5 4'); threshold.setAttribute('aria-label', '30 ms Schwelle'); svg.append(threshold); const thresholdLabel = document.createElementNS(svg.namespaceURI, 'text'); thresholdLabel.setAttribute('x', W - pad.r); thresholdLabel.setAttribute('y', thresholdY - 5); thresholdLabel.setAttribute('text-anchor', 'end'); thresholdLabel.setAttribute('class', 'chart-threshold-label'); thresholdLabel.setAttribute('style', 'fill:var(--orange,#E0A84A)'); thresholdLabel.textContent = '30 ms'; svg.append(thresholdLabel);
+  const thresholdY = y(100); const threshold = document.createElementNS(svg.namespaceURI, 'line'); threshold.setAttribute('x1', pad.l); threshold.setAttribute('x2', W - pad.r); threshold.setAttribute('y1', thresholdY); threshold.setAttribute('y2', thresholdY); threshold.setAttribute('class', 'chart-threshold'); threshold.setAttribute('style', 'stroke:var(--orange,#E0A84A);stroke-width:1;stroke-dasharray:5 4'); threshold.setAttribute('aria-label', '100 ms Lag-Schwelle'); svg.append(threshold); const thresholdLabel = document.createElementNS(svg.namespaceURI, 'text'); thresholdLabel.setAttribute('x', W - pad.r); thresholdLabel.setAttribute('y', thresholdY - 5); thresholdLabel.setAttribute('text-anchor', 'end'); thresholdLabel.setAttribute('class', 'chart-threshold-label'); thresholdLabel.setAttribute('style', 'fill:var(--orange,#E0A84A)'); thresholdLabel.textContent = '100 ms'; svg.append(thresholdLabel);
   const x = (i) => pad.l + (samples.length === 1 ? (W - pad.l - pad.r) / 2 : i * (W - pad.l - pad.r) / (samples.length - 1));
   let segment = [];
   const flush = () => { if (segment.length > 1) { const points = segment.map((p) => `${p.x},${p.y}`).join(' '); const area = document.createElementNS(svg.namespaceURI, 'polygon'); area.setAttribute('points', `${segment[0].x},${H - pad.b} ${points} ${segment.at(-1).x},${H - pad.b}`); area.setAttribute('class', 'latency-area'); area.setAttribute('style', 'fill:var(--turquoise,var(--accent,#3FC1B0));fill-opacity:.08;stroke:none'); svg.append(area); const line = document.createElementNS(svg.namespaceURI, 'polyline'); line.setAttribute('points', points); line.setAttribute('class', 'latency-line'); line.setAttribute('style', 'stroke:var(--turquoise,var(--accent,#3FC1B0));stroke-width:1.5px;fill:none'); svg.append(line); } segment = []; };
   samples.forEach((sample, i) => {
-    if (sample.ok && numeric(sample.ms)) { const point = { x: x(i), y: y(Number(sample.ms)) }; segment.push(point); const dot = document.createElementNS(svg.namespaceURI, 'circle'); dot.setAttribute('cx', point.x); dot.setAttribute('cy', point.y); dot.setAttribute('r', samples.length > 35 ? '2.5' : '4'); dot.setAttribute('class', 'latency-point'); dot.setAttribute('aria-label', `${date(sample.at)}: ${fmt(sample.ms)} ms`); svg.append(dot); }
+    if (sample.ok && numeric(sample.ms)) { const point = { x: x(i), y: y(Number(sample.ms)) }; segment.push(point); const dot = document.createElementNS(svg.namespaceURI, 'circle'); dot.setAttribute('cx', point.x); dot.setAttribute('cy', point.y); dot.setAttribute('r', Number(sample.ms) >= 100 ? '5' : samples.length > 35 ? '2.5' : '4'); dot.setAttribute('class', 'latency-point'); dot.setAttribute('aria-label', `${date(sample.at)}: ${fmt(sample.ms)} ms`); if (Number(sample.ms) >= 100) { dot.classList.add('latency-spike'); dot.dataset.lagAt = String(Date.parse(sample.at)); } svg.append(dot); }
     else {
       flush(); const lx = x(i);
       if (sample.status === 'measurement_error') { const gap = document.createElementNS(svg.namespaceURI, 'circle'); gap.setAttribute('cx', lx); gap.setAttribute('cy', H - pad.b + 5); gap.setAttribute('r', '2.5'); gap.setAttribute('class', 'measurement-gap'); gap.setAttribute('aria-label', 'Messfehler'); svg.append(gap); }
-      else { const loss = document.createElementNS(svg.namespaceURI, 'circle'); loss.setAttribute('cx', lx); loss.setAttribute('cy', H - pad.b + 3); loss.setAttribute('r', '2.5'); loss.setAttribute('class', 'loss-mark'); loss.setAttribute('style', 'fill:var(--red,#E06A5F)'); loss.setAttribute('aria-label', 'Paketverlust'); svg.append(loss); }
+      else { const loss = document.createElementNS(svg.namespaceURI, 'circle'); loss.setAttribute('cx', lx); loss.setAttribute('cy', H - pad.b + 3); loss.setAttribute('r', '3.5'); loss.setAttribute('class', 'loss-mark'); loss.setAttribute('style', 'fill:var(--red,#E06A5F)'); loss.setAttribute('aria-label', 'Keine Ping-Antwort – Datenverkehr ansehen'); loss.dataset.lagAt = String(Date.parse(sample.at)); svg.append(loss); }
     }
   }); flush();
   setText('#timeline-range', `${date(samples[0]?.at)} – ${date(samples.at(-1)?.at)}`);
@@ -329,7 +332,7 @@ function renderHistoryChart(parent, series, options = {}) {
   parent.append(chart);
   const legend = element('div', 'history-legend'); series.forEach((item) => { const entry = element('span'); const mark = element('i'); mark.style.backgroundColor = item.color; entry.append(mark, document.createTextNode(item.name)); legend.append(entry); }); if (options.legend !== false) parent.append(legend);
 }
-function renderHistoryConnection(view, { deferChart = false } = {}) {
+function renderHistoryConnection(view, { deferChart = false, disclosureState = new Map() } = {}) {
   let chartUpdate = null;
   const records = historyRecords('ping');
   const targetMap = state.history.pingTargets; records.forEach(record => safeArray(record.results).forEach(result => { if (result.host) targetMap.set(result.host, result); }));
@@ -393,7 +396,7 @@ function renderHistoryConnection(view, { deferChart = false } = {}) {
     }
   }
   const trafficRecords = state.history.records.filter(record => record.type === 'traffic' || record.type === 'fritzbox');
-  view.append(createLagPhaseSection({ pingRecords: records, selectedHosts: selected, trafficRecords, historyTruncated: state.history.truncated, onShowWindow: (from, to) => {
+  view.append(createLagPhaseSection({ pingRecords: records, selectedHosts: selected, trafficRecords, disclosureState, historyTruncated: state.history.truncated, onShowWindow: (from, to) => {
     state.history.pingViewport ||= { range: null };
     state.history.pingViewport.range = [from, to];
     state.history.pingViewport.followLatest = false;
@@ -557,7 +560,21 @@ function historyScrollList(id,label) {
   list.id=id;list.tabIndex=0;list.setAttribute('role','region');list.setAttribute('aria-label',`${label} – separat scrollbar`);
   return list;
 }
-function historyChartStatus() { return { monitoring: state.value?.monitoring ?? false, connected: !state.history.error && state.apiConnected !== false }; }
+async function showLagTraffic(at = null) {
+  if (navigation.activePage !== 'history') { navigation.navigate('history'); setHistoryTab('connection'); await loadHistory(true); }
+  else if (state.history.tab !== 'connection') setHistoryTab('connection');
+  const section = $('#history-lag-traffic'); if (!section) return;
+  section.open = true;
+  const cards = [...section.querySelectorAll('[data-lag-start]')];
+  const card = at == null ? cards[0] : cards.find(item => Number(item.dataset.lagStart) <= at && Number(item.dataset.lagEnd) >= at);
+  if (card) {
+    card.open = true;
+    const detail = card.querySelector('.lag-phase-traffic-disclosure'); if (detail) detail.open = true;
+    card.querySelector('summary')?.focus({ preventScroll: true });
+  } else if (at != null) showToast('Für diesen Zeitpunkt sind keine passenden Lag-Daten geladen. Ping-Ziele und Zeitraum prüfen.');
+  (card || section).scrollIntoView({ block: 'start' });
+}
+function historyChartStatus() { return { monitoring: state.value?.monitoring ?? false, connected: !state.history.error && state.apiConnected !== false, onSelectTime: showLagTraffic }; }
 function patchHistorySections(view, next, chart, placeholder) {
   const before = [], after = []; let passed = false;
   for (const child of view.childNodes) { if (child === chart) passed = true; else (passed ? after : before).push(child); }
@@ -575,18 +592,19 @@ function patchHistorySections(view, next, chart, placeholder) {
 function renderHistoryView({ live = false } = {}) {
   const view = $('#history-view'); if (!view) return;
   captureScroll(view);
+  const disclosureState = new Map([...view.querySelectorAll('details[data-disclosure-key]')].map(item => [item.dataset.disclosureKey, item.open]));
   const focusedId = view.contains(document.activeElement) ? document.activeElement.id : '';
   const chart = live && state.history.tab === 'connection' && state.history.disposeChart?.update && view.querySelector('.history-chart.ping-chart');
   const content = chart ? document.createDocumentFragment() : view;
   if (!chart) { state.history.disposeChart?.(); state.history.disposeChart = null; view.replaceChildren(); }
   view.setAttribute('aria-labelledby', `history-tab-${state.history.tab}`);
   if (state.history.error) { content.append(element('div', 'history-error', state.history.error)); }
-  else if (!state.history.loaded) content.append(historyEmpty('Verlauf wird geladen …'));
+  else if (!state.history.loaded && state.history.tab !== 'incidents') content.append(historyEmpty('Verlauf wird geladen …'));
   if (state.history.truncated) content.append(element('div', 'history-notice', 'Ältere Messungen findest du im lokalen Protokollarchiv.'));
   const messages = [...safeArray(state.history.warnings).map((warning) => typeof warning === 'string' ? warning : warning?.message || warning?.detail || warning?.title || 'Hinweis zum Verlauf'), ...(state.history.lastError ? [state.history.lastError] : [])];
   messages.forEach((message) => content.append(element('div', 'history-service-message', message)));
-  const renderers = { connection: renderHistoryConnection, traffic: renderHistoryTraffic, wireless: renderHistoryWireless, devices: renderHistoryDevices, speed: renderHistorySpeed, events: renderHistoryEvents, fritzbox: (container) => renderFritzboxHistory(container, historyRecords('fritzbox')) };
-  const update = state.history.loaded && (renderers[state.history.tab] || renderHistoryConnection)(content, { deferChart: !!chart });
+  const renderers = { connection: renderHistoryConnection, traffic: renderHistoryTraffic, wireless: renderHistoryWireless, devices: renderHistoryDevices, speed: renderHistorySpeed, events: renderHistoryEvents, incidents: container => incidentViews?.renderHistory(container), fritzbox: (container) => renderFritzboxHistory(container, historyRecords('fritzbox')) };
+  const update = (state.history.loaded || state.history.tab === 'incidents') && (renderers[state.history.tab] || renderHistoryConnection)(content, { deferChart: !!chart, disclosureState });
   if (chart && update) {
     patchHistorySections(view, content, chart, update.chart);
     state.history.disposeChart.update(update.series, historyChartStatus());
@@ -628,6 +646,7 @@ function setHistoryTab(tab) {
   state.history.tab = tab;
   document.querySelectorAll('[data-history-tab]').forEach((button) => { const active = button.dataset.historyTab === tab; button.classList.toggle('is-active', active); button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
   renderHistoryView();
+  if (tab === 'incidents') incidentViews?.refresh(true);
 }
 function renderScan(scan) {
   const progress = $('#scan-progress'); progress.hidden = !scan || (!scan.running && !scan.done && !scan.error && !scan.message);
@@ -644,7 +663,7 @@ function render(s) {
   const testFinished = ['speedTest','stressTest'].some(key => !s[key]?.running && s[key]?.at && (state.value?.[key]?.running || state.value?.[key]?.at !== s[key].at));
   gamesView.render(s);
   renderStorage(s.persistence);
-  state.value = s; setGlobalError(s.lastError || ''); renderInterfaces(s); renderConnection(s); renderOverview(s); renderLiveSignal($('#live-signal'), s); renderOverviewDetails(s); renderTargets(s); renderRepeaterConnection(s); renderChart(s); renderWifi(s.network?.wifi); renderDevices(s); renderEvents(s); renderSpeed(s); renderStress(s); renderScan(s.scan); window.dispatchEvent(new CustomEvent('fritzbox-state', { detail: { fritzbox: s.fritzbox || null, targets: s.targets, repeaterHost: s.repeaterHost } })); syncControls();restoreScroll(visiblePage);
+  state.value = s; setGlobalError(s.lastError || ''); diagnosticSettings?.update(s); incidentViews?.updateState(s); incidentViews?.refresh(); renderInterfaces(s); renderConnection(s); renderOverview(s); renderLiveSignal($('#live-signal'), s); renderOverviewDetails(s); renderTargets(s); renderRepeaterConnection(s); renderChart(s); renderWifi(s.network?.wifi); renderDevices(s); renderEvents(s); renderSpeed(s); renderStress(s); renderScan(s.scan); window.dispatchEvent(new CustomEvent('fritzbox-state', { detail: { fritzbox: s.fritzbox || null, targets: s.targets, repeaterHost: s.repeaterHost } })); syncControls();restoreScroll(visiblePage);
   if (testFinished) loadHistory(true);
   state.history.disposeChart?.update?.(undefined, historyChartStatus());
 }
@@ -726,6 +745,11 @@ $('#repeater-form').addEventListener('submit', async (event) => { event.preventD
 $('#repeater-host').addEventListener('input', syncControls);
 $('#pc-repeater').addEventListener('change', () => runAction('primary', '/api/repeater/primary', { host: $('#pc-repeater').value || null }, 'PC-Anschluss gespeichert.'));
 $('#history-mark').addEventListener('click', markLag);
+$('#lag-traffic-open').addEventListener('click', () => showLagTraffic());
+$('#latency-chart').addEventListener('click', event => {
+  const at = Number(event.target.closest('[data-lag-at]')?.dataset.lagAt);
+  if (Number.isFinite(at)) showLagTraffic(at);
+});
 $('#trace-close').addEventListener('click', () => $('#trace-dialog').close()); $('#trace-done').addEventListener('click', () => $('#trace-dialog').close()); $('#trace-dialog').addEventListener('click', (event) => { if (event.target === event.currentTarget) event.currentTarget.close(); });
 document.querySelectorAll('[data-history-tab]').forEach((button) => button.addEventListener('click', () => setHistoryTab(button.dataset.historyTab)));
 window.addEventListener('open-traffic-history', event => {
@@ -748,6 +772,9 @@ initStorage({ post, request });
 const gamesView = initGames({post,refresh:pollOnce,notify:showToast});
 initLagHotkey({ markLag, showToast });
 initPresentation();
+incidentViews = initIncidentViews({ overview: $('#incident-overview'), history: $('#history-view'), request, isHistoryActive: () => navigation.activePage === 'history' && state.history.tab === 'incidents', openHistory: id => { navigation.navigate('history', { focus: true }); setHistoryTab('incidents'); queueMicrotask(() => incidentViews?.open(id)); } });
+$('#incident-history-open').addEventListener('click', () => { navigation.navigate('history', { focus: true }); setHistoryTab('incidents'); });
+diagnosticSettings = initDiagnosticSettings($('#diagnostic-settings'), { api: (path, body) => body === undefined ? request(path) : post(path, body), post, onChange: pollOnce });
 // Keep labels and points at their natural size when the chart panel changes width.
 new ResizeObserver(() => { if (state.value) renderChart(state.value); }).observe($('#latency-chart'));
 $('#history-hours').addEventListener('change', (event) => { state.history.hours = Number(event.target.value) || 24; loadHistory(true); });

@@ -121,7 +121,7 @@ test('load markers and spike details retain the state at Ping start across stres
       const pending=m.tick();
       if(startsDuringPing){m.startStressTest();await f.ready;}
       else await m.stopStressTest();
-      finishPing([{host:target.host,ok:true,ms:90,status:'Success'}]);await pending;
+      finishPing([{host:target.host,ok:true,ms:100,status:'Success'}]);await pending;
       const ping=m.historySnapshot().records.find(record=>record.type==='ping');
       assert.equal(ping.underLoad,!startsDuringPing);assert.equal(ping.loadType,startsDuringPing?null:'stress');
       const spike=m.state.events.find(event=>event.title==='Router: Ping-Spitze');

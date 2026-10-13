@@ -167,10 +167,10 @@ export function renderPingChart(parent, input, viewport = {}) {
   const tooltip = node('div', 'ping-chart-tooltip-html'); tooltip.hidden = true; tooltip.setAttribute('role', 'status'); tooltip.setAttribute('aria-live', 'polite');
   frame.append(chart, tooltip);
   const rangeLabel = node('p', 'ping-chart-range');
-  const help = node('p', 'chart-note', 'Mausrad scrollt · Strg + Mausrad zoomt · Ziehen verschiebt den Ausschnitt.'); help.id = 'ping-chart-help'; help.dataset.help = 'Maus: Messzeitpunkt anzeigen; Mausrad: Seite scrollen; Strg + Mausrad: zoomen; Ziehen: verschieben; Doppelklick: alles. Tastatur: Eingabe oder Leertaste starten, Pfeiltasten wechseln Messpunkte, Escape beendet die Auswahl.';
+  const help = node('p', 'chart-note', 'Mausrad scrollt · Strg + Mausrad zoomt · Markierte Spitze anklicken: Datenverkehr ansehen.'); help.id = 'ping-chart-help'; help.dataset.help = 'Maus: Messzeitpunkt anzeigen; Mausrad: Seite scrollen; Strg + Mausrad: zoomen; Ziehen: verschieben; Doppelklick: alles. Orange umrandete Punkte markieren Lag-Spitzen ab 100 ms. Ein Klick auf eine Spitze oder einen Verlust öffnet den zugehörigen Datenverkehr. Tastatur: Eingabe oder Leertaste starten, Pfeiltasten wechseln Messpunkte, Escape beendet die Auswahl.';
   const empty = node('div', 'history-empty', 'Für die angehakten Ziele liegen im Zeitraum keine Ping-Messungen vor.');
   parent.append(toolbar, empty, frame, rangeLabel, help);
-  let width = 1000, height = 340, drag = null, queuedUpdate = null, disposed = false, inspectedTime = null, pinned = false, inspectionLayer = null, inspectionFrame = 0, maxVisibleValue = 1;
+  let width = 1000, height = 340, drag = null, ignoreLagClick = false, queuedUpdate = null, disposed = false, inspectedTime = null, pinned = false, inspectionLayer = null, inspectionFrame = 0, maxVisibleValue = 1;
   const padding = () => ({ left: width < 500 ? 65 : 76, right: 16, top: 22, bottom: 42 });
   function updateStatus() {
     const hasData = series.some(item => item.values.some(point => Number.isFinite(point.time)));
@@ -194,7 +194,7 @@ export function renderPingChart(parent, input, viewport = {}) {
     const visible = series.map(item => ({ ...item, values: visiblePingValues(item.values, range) }));
     let observedMax = 0, count = 0;
     for (const item of visible) for (const point of item.values) if (numeric(point.value)) { observedMax = Math.max(observedMax, point.value); count += 1; }
-    const ticks = niceAxisTicks(Math.max(observedMax, 30));
+    const ticks = niceAxisTicks(Math.max(observedMax, 100));
     const maxValue = ticks.at(-1) || 1;
     maxVisibleValue = maxValue;
     const x = time => pad.left + (time - range[0]) / (range[1] - range[0]) * plotWidth;
@@ -203,8 +203,8 @@ export function renderPingChart(parent, input, viewport = {}) {
       const py = y(tick);
       chart.append(svgNode('line', { x1: pad.left, x2: width - pad.right, y1: py, y2: py, class: 'history-grid' }), svgNode('text', { x: pad.left - 9, y: py + 4, 'text-anchor': 'end', class: 'history-axis-label' }, `${fmt(tick)} ms`));
     }
-    const thresholdY = y(30);
-    chart.append(svgNode('line', { x1: pad.left, x2: width - pad.right, y1: thresholdY, y2: thresholdY, class: 'history-threshold', 'aria-label': '30 ms Schwelle' }), svgNode('text', { x: width - pad.right, y: thresholdY - 6, 'text-anchor': 'end', class: 'history-threshold-label' }, '30 ms'));
+    const thresholdY = y(100);
+    chart.append(svgNode('line', { x1: pad.left, x2: width - pad.right, y1: thresholdY, y2: thresholdY, class: 'history-threshold', 'aria-label': '100 ms Lag-Schwelle' }), svgNode('text', { x: width - pad.right, y: thresholdY - 6, 'text-anchor': 'end', class: 'history-threshold-label' }, '100 ms'));
     for (const fraction of width < 600 ? [0, 1] : [0, .5, 1]) {
       const time = range[0] + (range[1] - range[0]) * fraction;
       const label = width < 600 ? new Date(time).toLocaleTimeString('de-DE') : timeLabel(time);
@@ -225,14 +225,15 @@ export function renderPingChart(parent, input, viewport = {}) {
         previousSegment = point.segment;
         if (numeric(point.value)) points.push(`${x(point.time)},${y(point.value)}`);
         else if (isPingLossPoint(point) && Number.isFinite(point.time)) {
-          const loss = svgNode('circle', { cx: x(point.time), cy: height - pad.bottom + 3, r: 2.5, class: 'history-loss-marker', 'aria-label': 'Paketverlust' });
+          const loss = svgNode('circle', { cx: x(point.time), cy: height - pad.bottom + 3, r: 3.5, class: 'history-loss-marker', 'data-lag-at': point.time, 'aria-label': 'Keine Ping-Antwort – Datenverkehr ansehen' });
           loss.append(svgNode('title', {}, `${item.name}: Paketverlust · ${timeLabel(point.time)}`)); chart.append(loss);
         }
       }
       flush();
       for (const point of item.values) if (numeric(point.value)) {
         const label = `${item.name}: ${fmt(point.value)} ms · ${timeLabel(point.time)}`;
-        const dot = svgNode('circle', { cx: x(point.time), cy: y(point.value), r: 3.5, fill: item.color, 'aria-label': label });
+        const dot = svgNode('circle', { cx: x(point.time), cy: y(point.value), r: point.value >= 100 ? 5 : 3.5, fill: item.color, 'aria-label': label });
+        if (point.value >= 100) { dot.classList.add('history-spike-marker'); dot.dataset.lagAt = String(point.time); }
         dot.append(svgNode('title', {}, label)); chart.append(dot);
       }
     }
@@ -307,6 +308,7 @@ export function renderPingChart(parent, input, viewport = {}) {
     commit(zoomPingRange(range, domain, Math.exp(Math.max(-1, Math.min(1, pixels * .003))), (point.x - pad.left) / (width - pad.left - pad.right)), { zoom: true });
   }, { passive: false });
   chart.addEventListener('pointerdown', event => {
+    ignoreLagClick = false;
     const point = localPoint(event); if (event.button !== 0 || !inside(point) || full() || drag) return;
     drag = { id: event.pointerId, x: point.x, moved: 0, range: [...range] };
     chart.setPointerCapture(event.pointerId); chart.classList.add('is-dragging'); chart.focus({ preventScroll: true });
@@ -323,6 +325,7 @@ export function renderPingChart(parent, input, viewport = {}) {
     commit(panPingRange(drag.range, domain, (drag.x - point.x) / (width - pad.left - pad.right) * (drag.range[1] - drag.range[0])), { pan: true });
   });
   const finishDrag = event => {
+    if (drag) ignoreLagClick = drag.moved >= 3;
     if (drag && event?.pointerId === drag.id && drag.moved < 3 && event.pointerType === 'touch') {
       const point = localPoint(event); const pad = padding();
       if (inside(point)) setInspectionAt(point, true);
@@ -338,6 +341,10 @@ export function renderPingChart(parent, input, viewport = {}) {
     }
     finishDrag(event);
   }); chart.addEventListener('pointercancel', finishDrag); chart.addEventListener('lostpointercapture', finishDrag);
+  chart.addEventListener('click', event => {
+    const at = Number(event.target.closest('[data-lag-at]')?.dataset.lagAt);
+    if (!ignoreLagClick && Number.isFinite(at)) stateOptions.onSelectTime?.(at);
+  });
   chart.addEventListener('pointerleave', event => {
     if (event.pointerType !== 'touch' && !pinned && inspectedTime != null && !tooltip.contains(event.relatedTarget)) {
       inspectedTime = null; if (inspectionFrame) cancelAnimationFrame(inspectionFrame); inspectionFrame = 0; updateInspection();

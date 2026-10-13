@@ -63,13 +63,21 @@ export function trafficSources(records=[],fritzbox={}) {
 
   for(const record of records) {
     const epoch=`${record.appSessionId||'legacy'}:${record.sessionId||record.epoch||record.measurementStartedAt||'legacy'}`;
-    if(record.type==='traffic')add('pc','Dieser PC').points.push({at:record.at,epoch:`${epoch}:${record.interfaceId}`,appSessionId:record.appSessionId||null,measurementStartedAt:record.measurementStartedAt||null,measurementEpoch:record.epoch??null,interfaceId:record.interfaceId||null,downloadMbps:record.downloadMbps,uploadMbps:record.uploadMbps});
+    if(record.type==='traffic') {
+      const intervalStartedAt=record.intervalStartedAt||null, intervalMs=Date.parse(record.at)-Date.parse(intervalStartedAt);
+      const canDerive=intervalStartedAt&&Number.isFinite(intervalMs)&&intervalMs>0&&intervalMs<=90000&&finite(record.downloadMbps)&&finite(record.uploadMbps);
+      const bytesDerived=record.downloadDeltaBytes==null&&record.uploadDeltaBytes==null&&canDerive;
+      add('pc','Dieser PC').points.push({at:record.at,epoch:`${epoch}:${record.interfaceId}`,appSessionId:record.appSessionId||null,measurementStartedAt:record.measurementStartedAt||null,measurementEpoch:record.epoch??null,interfaceId:record.interfaceId||null,downloadMbps:record.downloadMbps,uploadMbps:record.uploadMbps,downloadDeltaBytes:record.downloadDeltaBytes??(canDerive?record.downloadMbps*intervalMs*125:undefined),uploadDeltaBytes:record.uploadDeltaBytes??(canDerive?record.uploadMbps*intervalMs*125:undefined),bytesDerived,intervalStartedAt});
+    }
     if(record.type==='fritzbox') {
-      add('wan','FRITZ!Box gesamt').points.push({at:record.at,epoch,appSessionId:record.appSessionId||null,measurementStartedAt:record.measurementStartedAt||null,measurementEpoch:record.epoch??null,downloadMbps:record.wan?.downloadMbps,uploadMbps:record.wan?.uploadMbps});
+      add('wan','FRITZ!Box gesamt').points.push({at:record.wan?.intervalEndedAt||record.at,observedAt:record.at,epoch,appSessionId:record.appSessionId||null,measurementStartedAt:record.measurementStartedAt||null,measurementEpoch:record.epoch??null,downloadMbps:record.wan?.rateAvailable===false?null:record.wan?.downloadMbps,uploadMbps:record.wan?.rateAvailable===false?null:record.wan?.uploadMbps,rateAvailable:record.wan?.rateAvailable,downloadDeltaBytes:record.wan?.downloadDeltaBytes,uploadDeltaBytes:record.wan?.uploadDeltaBytes,intervalStartedAt:record.wan?.intervalStartedAt||null,measurementBasis:record.wan?.measurementBasis,timingUncertaintyMs:record.wan?.timingUncertaintyMs,downstreamMbps:record.wan?.downstreamMbps,upstreamMbps:record.wan?.upstreamMbps,capture:record.capture||null});
       const context=snapshot(`record:${epoch}:${record.at}`,record.mesh?.nodes);
       for(const row of list(record.deviceTraffic)) {
         const source=device(row,context);if(!source)continue;
-        source.points.push({at:row.at||record.at,epoch,appSessionId:record.appSessionId||null,measurementStartedAt:record.measurementStartedAt||null,measurementEpoch:record.epoch??null,downloadMbps:row.rateAvailable===false?null:row.downloadMbps,uploadMbps:row.rateAvailable===false?null:row.uploadMbps,downloadDeltaBytes:row.downloadDeltaBytes,uploadDeltaBytes:row.uploadDeltaBytes,intervalStartedAt:row.intervalStartedAt});
+        const counterAt=row.intervalEndedAt||row.at||record.at,observedAt=row.observedAt||record.at;
+        const timeAlignment=Date.parse(counterAt)>Date.parse(observedAt)+2000?'invalid-future':'router-clock-unverified';
+        if(timeAlignment==='invalid-future')source.reason='Routerzähler liegt nach dem Empfangszeitpunkt; keine verlässliche Lag-Zuordnung.';
+        source.points.push({at:counterAt,observedAt,timeAlignment,epoch,appSessionId:record.appSessionId||null,measurementStartedAt:record.measurementStartedAt||null,measurementEpoch:record.epoch??null,downloadMbps:row.rateAvailable===false?null:row.downloadMbps,uploadMbps:row.rateAvailable===false?null:row.uploadMbps,rateAvailable:row.rateAvailable,downloadDeltaBytes:row.downloadDeltaBytes,uploadDeltaBytes:row.uploadDeltaBytes,intervalStartedAt:row.intervalStartedAt,measurementBasis:row.measurementBasis||'router-counter-timestamp',timingUncertaintyMs:row.timingUncertaintyMs});
       }
       for(const row of list(record.mesh?.nodes))device(row,context);
       for(const row of list(record.hosts))device(row,context);

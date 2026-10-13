@@ -1,9 +1,26 @@
-param([ValidateSet('discover', 'traffic', 'ping', 'trace', 'worker')][string]$Mode)
+param([ValidateSet('discover', 'traffic', 'ping', 'trace', 'worker', 'traffic-worker')][string]$Mode)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
+
+# Local route lookup only; no packets or administrative rights are required.
+# Unsupported native lookup must not prevent Ping itself from working.
+$routeLookupAvailable = $false
+if ($Mode -eq 'worker' -or $Mode -eq 'ping') {
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class KompassRoute {
+    [DllImport("iphlpapi.dll", ExactSpelling=true)]
+    public static extern uint GetBestInterface(uint destination, out uint interfaceIndex);
+}
+'@
+        $routeLookupAvailable = $true
+    } catch { $routeLookupAvailable = $false }
+}
 
 function Write-Json($value) {
     # -InputObject preserves empty and single-element arrays on Windows PowerShell 5.1.
@@ -82,10 +99,20 @@ function Invoke-PingBatch($request) {
         $pending = @()
         foreach ($target in $targets) {
             $ping = New-Object System.Net.NetworkInformation.Ping
+            $routeInterfaceId = $null
+            if ($routeLookupAvailable) {
+                try {
+                    $routeAddress = $null
+                    if ([System.Net.IPAddress]::TryParse([string]$target, [ref]$routeAddress) -and $routeAddress.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) {
+                        [uint32]$routeIndex = 0
+                        if ([KompassRoute]::GetBestInterface([BitConverter]::ToUInt32($routeAddress.GetAddressBytes(),0), [ref]$routeIndex) -eq 0) { $routeInterfaceId = [string]$routeIndex }
+                    }
+                } catch { $routeInterfaceId = $null }
+            }
             try {
                 $task = $ping.SendPingAsync([string]$target, [int]$request.timeoutMs)
-                $pending += @{ host = $target; ping = $ping; task = $task; error = $null }
-            } catch { $pending += @{ host = $target; ping = $ping; task = $null; error = $_.Exception.GetBaseException().Message } }
+                $pending += @{ host = $target; ping = $ping; task = $task; error = $null; routeInterfaceId = $routeInterfaceId }
+            } catch { $pending += @{ host = $target; ping = $ping; task = $null; error = $_.Exception.GetBaseException().Message; routeInterfaceId = $routeInterfaceId } }
         }
         $results = @()
         foreach ($item in $pending) {
@@ -95,14 +122,48 @@ function Invoke-PingBatch($request) {
                 $success = $reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success
                 $ms = $null
                 if ($success) { $ms = $reply.RoundtripTime }
-                $results += @{ host = $item.host; ok = $success; ms = $ms; status = $reply.Status.ToString() }
+                $results += @{ host = $item.host; ok = $success; ms = $ms; status = $reply.Status.ToString(); routeInterfaceId = $item.routeInterfaceId }
             } catch { $results += @{ host = $item.host; ok = $false; ms = $null; status = 'measurement_error'; error = $_.Exception.GetBaseException().Message } }
             finally { $item.ping.Dispose() }
         }
         return ,@($results)
 }
 
+# Native .NET counters are local reads. This deliberately uses neither CIM nor
+# a new subprocess on each sample and runs independently of the Ping worker.
+function Get-TrafficCounters {
+    $counters = @()
+    foreach ($adapter in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+        if ($adapter.NetworkInterfaceType -eq 'Loopback') { continue }
+        try {
+            $ipv4 = $adapter.GetIPProperties().GetIPv4Properties()
+            if ($null -eq $ipv4) { continue }
+            $index = $ipv4.Index
+        } catch { continue } # An IPv6-only adapter has no IPv4 interface index.
+        $stats = $adapter.GetIPv4Statistics()
+        $speed = $null
+        try { if ($adapter.Speed -gt 0) { $speed = $adapter.Speed / 1000000 } } catch { }
+        $counters += @{ id = [string]$index; name = $adapter.Name; receivedBytes = $stats.BytesReceived; sentBytes = $stats.BytesSent;
+            receivedErrors = $stats.IncomingPacketsWithErrors; sentErrors = $stats.OutgoingPacketsWithErrors;
+            receivedDiscards = $stats.IncomingPacketsDiscarded; sentDiscards = $stats.OutgoingPacketsDiscarded;
+            status = $adapter.OperationalStatus.ToString(); linkSpeedMbps = $speed }
+        if ($counters.Count -gt 256) { throw 'Zu viele Netzwerkschnittstellen fuer eine Verkehrsmessung.' }
+    }
+    return ,@($counters)
+}
+
 try {
+    if ($Mode -eq 'traffic-worker') {
+        while ($null -ne ($line = [Console]::In.ReadLine())) {
+            if ($line.Length -gt 1024) { throw 'Verkehrsmessanfrage ist zu gross.' }
+            $request = $line | ConvertFrom-Json
+            if ($request.requestId -notmatch '^[1-9][0-9]{0,14}$') { throw 'Ungueltige Verkehrsmessanfrage.' }
+            $counters = Get-TrafficCounters
+            [Console]::Out.WriteLine((ConvertTo-Json -InputObject @{ requestId = [string]$request.requestId; counters = $counters } -Depth 10 -Compress))
+            [Console]::Out.Flush()
+        }
+        exit 0
+    }
     if ($Mode -eq 'worker') {
         while ($null -ne ($line = [Console]::In.ReadLine())) {
             if ($line.Length -gt 65536) { throw 'Ping-Anfrage ist zu gross.' }
@@ -122,18 +183,7 @@ try {
         $trace = Invoke-Native "$env:SystemRoot\System32\tracert.exe" "-d -h 16 -w 400 $($request.host)" 22000
         Write-Json @{ host = $request.host; output = ($trace.output + $trace.error) }
     } elseif ($Mode -eq 'traffic') {
-        $counters = @()
-        foreach ($adapter in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
-            if ($adapter.OperationalStatus -ne 'Up' -or $adapter.NetworkInterfaceType -eq 'Loopback') { continue }
-            $props = $adapter.GetIPProperties()
-            if (@($props.UnicastAddresses | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' }).Count -eq 0) { continue }
-            $index = $props.GetIPv4Properties().Index
-            $stats = $adapter.GetIPv4Statistics()
-            $counters += @{ id = [string]$index; name = $adapter.Name; receivedBytes = $stats.BytesReceived; sentBytes = $stats.BytesSent;
-                receivedErrors = $stats.IncomingPacketsWithErrors; sentErrors = $stats.OutgoingPacketsWithErrors;
-                receivedDiscards = $stats.IncomingPacketsDiscarded; sentDiscards = $stats.OutgoingPacketsDiscarded }
-        }
-        Write-Json @($counters)
+        Write-Json (Get-TrafficCounters)
     } else {
         $interfaces = @()
         $warnings = @()
@@ -161,7 +211,7 @@ try {
             $speed = $null
             if ($adapter.Speed -gt 0) { $speed = $adapter.Speed / 1000000 }
             $interfaces += @{ id = [string]$index; name = $adapter.Name; description = $adapter.Description; ipv4 = @($ipv4); gateway = $gateway;
-                dns = @($props.DnsAddresses | ForEach-Object { $_.ToString() }); status = 'Up'; kind = $kind; linkSpeedMbps = $speed }
+                dns = @($props.DnsAddresses | ForEach-Object { $_.ToString() }); mac = (($adapter.GetPhysicalAddress().GetAddressBytes() | ForEach-Object { $_.ToString('X2') }) -join ':'); status = 'Up'; kind = $kind; linkSpeedMbps = $speed }
         }
         $defaultId = $null
         try {

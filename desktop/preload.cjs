@@ -13,6 +13,21 @@ function subscribe(channel, callback, project) {
   return () => ipcRenderer.removeListener(channel, listener);
 }
 
+contextBridge.exposeInMainWorld('desktopBackgroundMonitoring', Object.freeze({
+  get: () => ipcRenderer.invoke('netzwerk-kompass:background:get'),
+  set: enabled => ipcRenderer.invoke('netzwerk-kompass:background:set', enabled),
+  quit: () => ipcRenderer.invoke('netzwerk-kompass:background:quit'),
+  onStatus: callback => subscribe('netzwerk-kompass:background:status', callback, value => ({
+    available: value?.available === true, enabled: value?.enabled === true, hidden: value?.hidden === true,
+    running: value?.running === true, restartSupported: value?.restartSupported === true,
+    state: typeof value?.state === 'string' ? value.state : '',
+    restarts: Number.isInteger(value?.restarts) ? value.restarts : 0,
+    maxRestarts: Number.isInteger(value?.maxRestarts) ? value.maxRestarts : 0,
+    lastGap: value?.lastGap ? { startedAt: value.lastGap.startedAt, resumedAt: value.lastGap.resumedAt, reason: value.lastGap.reason } : null,
+    error: typeof value?.error === 'string' ? value.error : ''
+  }))
+}));
+
 contextBridge.exposeInMainWorld('desktopLagHotkey', Object.freeze({
   get: () => ipcRenderer.invoke(GET_CHANNEL),
   set: accelerator => ipcRenderer.invoke(SET_CHANNEL, accelerator),

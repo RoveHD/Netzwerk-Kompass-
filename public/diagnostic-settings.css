@@ -1,0 +1,9 @@
+.diagnostic-settings-panel{display:grid;gap:16px}
+.diagnostic-settings-panel>h2{margin:0}.diagnostic-setting-section{display:grid;gap:10px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.diagnostic-setting-section h3{margin:0;font-size:16px}.diagnostic-setting-note,.diagnostic-setting-status{margin:0;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.diagnostic-setting-status{min-height:1.4em;color:var(--text)}.diagnostic-setting-field{display:grid;gap:6px;min-width:0;color:var(--muted);font-weight:600}
+.diagnostic-setting-field input,.diagnostic-setting-field select{box-sizing:border-box;width:100%;min-width:0}.diagnostic-history-policy{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px;align-items:end}
+.diagnostic-history-policy .button{justify-self:start}.diagnostic-history-policy .diagnostic-setting-status{grid-column:1/-1}
+.diagnostic-setting-toggle{display:flex;align-items:flex-start;gap:9px;color:var(--text);cursor:pointer}.diagnostic-setting-toggle input{flex:none;width:19px;height:19px;margin:2px 0 0;accent-color:var(--accent)}
+.diagnostic-integrated-panel{margin-top:0}.fritzbox-remember-option{display:flex;align-items:center;gap:9px;color:var(--muted)}.fritzbox-remember-option input{width:18px;height:18px;min-height:18px;accent-color:var(--accent)}
+@media(max-width:640px){.diagnostic-setting-section{padding:11px}.diagnostic-history-policy{grid-template-columns:1fr}.diagnostic-history-policy .diagnostic-setting-status{grid-column:auto}}

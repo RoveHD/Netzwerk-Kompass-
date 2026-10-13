@@ -7,6 +7,10 @@ import path from 'node:path';
 
 const network={interfaces:[{id:'1',name:'LAN',gateway:'192.168.1.1',ipv4:[{address:'192.168.1.2',prefixLength:30}]},{id:'2',name:'WLAN',gateway:'192.168.2.1',ipv4:[{address:'192.168.2.2',prefixLength:30}]}],defaultInterfaceId:'1',neighbors:[],wifi:{connected:false},warnings:[]};
 const fake={discoverNetwork:async()=>structuredClone(network),pingMany:async hosts=>hosts.map(host=>({host,ok:true,ms:2,status:'Success'})),getTrafficCounters:async()=>[]};
+// These fixtures model an instantaneous counter read at a known source time.
+// Production snapshots must carry the client's actual request window.
+const observedWan=(wan,at=Date.now())=>({...wan,sampling:{from:new Date(at).toISOString(),to:new Date(at).toISOString()}});
+const rewindWan=(m,ms)=>{m.fritzPrevious.time-=ms;m.fritzPrevious.wan.sampling={from:new Date(Date.parse(m.fritzPrevious.wan.sampling.from)-ms).toISOString(),to:new Date(Date.parse(m.fritzPrevious.wan.sampling.to)-ms).toISOString()};};
 test('adapter error intervals reach live state and durable history, reset clears the baseline',async()=>{
   let receivedErrors=100;
   const m=new Monitor({...fake,getTrafficCounters:async()=>[{id:'1',receivedBytes:1000,sentBytes:1000,receivedErrors,sentErrors:0,receivedDiscards:0,sentDiscards:0}]});
@@ -26,6 +30,198 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((done,fail)=>{r
 const originalLookupDns=Monitor.prototype.lookupDns;
 test.before(()=>{Monitor.prototype.lookupDns=async()=>({address:'192.0.2.1',family:4});});
 test.after(()=>{Monitor.prototype.lookupDns=originalLookupDns;});
+
+test('background router and DNS queries run once a minute and pause without slowing ping sampling',async t=>{
+  let now=2000000,routerReads=0,dnsReads=0,pingReads=0;
+  t.mock.method(Date,'now',()=>now);
+  const m=new Monitor({...fake,pingMany:async hosts=>{pingReads++;return fake.pingMany(hosts);}});
+  await m.refresh();
+  m.lookupDns=async()=>{dnsReads++;return {address:'192.0.2.1'};};
+  m.fritzClient={connected:true,disconnect(){this.connected=false;},poll:async()=>{
+    routerReads++;
+    return {host:'fritz.box',device:{uptimeSeconds:100+routerReads*60},wan:observedWan({totalBytesReceived:routerReads*600000,totalBytesSent:routerReads*300000}),hosts:[]};
+  }};
+  m.lastFritz=m.lastDns=now;
+  const step=async elapsed=>{now+=elapsed;m.lastRefresh=m.lastCounters=now;await m.tick();await m.fritzPoll;};
+  try {
+    assert.equal(m.intervalMs,1000);
+    await step(30000);await step(29999);
+    assert.equal(routerReads,0);assert.equal(dnsReads,0);assert.equal(pingReads,2);
+    await step(1);
+    assert.equal(routerReads,1);assert.equal(dnsReads,1);
+    await step(1000);
+    assert.equal(routerReads,1);assert.equal(dnsReads,1);assert.equal(pingReads,4);
+    await step(59000);
+    assert.equal(routerReads,2);assert.equal(dnsReads,2);
+    assert.equal(m.state.fritzbox.wan.downloadMbps,.08,'Minute-long router intervals retain valid rates');
+    m.setMonitoring(false);await step(60000);
+    assert.equal(routerReads,2);assert.equal(dnsReads,2);assert.equal(pingReads,5);
+    await m.refreshFritz();assert.equal(routerReads,3,'Explicit router refresh remains available while paused');
+    m.setMonitoring(true);await step(1000);
+    assert.equal(routerReads,3);assert.equal(dnsReads,3);assert.equal(pingReads,6);
+  }finally{await m.close();}
+});
+
+test('only real spikes at or above 100 ms or missing replies request lag router captures',async()=>{
+  let result={ok:true,ms:50,status:'Success'};
+  const m=new Monitor({...fake,pingMany:async hosts=>hosts.map(host=>({host,...result}))});
+  m.maintenance=async()=>{};await m.refresh();
+  m.fritzClient={connected:true,disconnect(){this.connected=false;}};
+  try {
+    for(const [value,expected] of [
+      [{ok:true,ms:50,status:'Success'},false],
+      [{ok:true,ms:99.99,status:'Success'},false],
+      [{ok:true,ms:100,status:'Success'},true],
+      [{ok:false,ms:null,status:'TimedOut'},true],
+      [{ok:false,ms:null,status:'measurement_error'},false],
+      [{ok:true,ms:Infinity,status:'Success'},false]
+    ]) {
+      result=value;m.pendingFritzLag=null;await m.tick();
+      assert.equal(Boolean(m.pendingFritzLag),expected,JSON.stringify(value));
+      if(expected){assert.equal(m.pendingFritzLag.reason,'lag');assert.ok(Number.isFinite(Date.parse(m.pendingFritzLag.triggeredAt)));}
+    }
+    m.pendingFritzLag=null;
+    const mark=m.markLag('manuelle Markierung');assert.deepEqual(m.pendingFritzLag,{reason:'lag',triggeredAt:mark.at});
+    m.disconnectFritz(false);result={ok:true,ms:100,status:'Success'};await m.tick();m.markLag();assert.equal(m.pendingFritzLag,null);
+  }finally{await m.close();}
+});
+
+test('lag captures coalesce ping bursts and never poll more often than every 30 seconds',async t=>{
+  let now=Date.now(),polls=0;
+  t.mock.method(Date,'now',()=>now);
+  const m=new Monitor({...fake,pingMany:async hosts=>hosts.map(host=>({host,ok:true,ms:150,status:'Success'}))});await m.refresh();
+  m.fritzClient={connected:true,disconnect(){this.connected=false;},poll:async()=>{polls++;return {host:'fritz.box',device:{uptimeSeconds:100+polls*30},wan:observedWan({totalBytesReceived:polls*300000,totalBytesSent:polls*150000}),hosts:[]};}};
+  m.lastFritz=m.lastDns=now;
+  const step=async elapsed=>{now+=elapsed;m.lastRefresh=m.lastCounters=now;await m.tick({background:true});await m.maintenancePromise;await m.fritzPoll;};
+  try {
+    await step(0);await step(29999);assert.equal(polls,0);
+    await step(1);assert.equal(polls,1);assert.equal(m.pendingFritzLag,null);
+    const first=m.state.fritzbox.history[0];assert.equal(first.capture.reason,'lag');assert.equal(first.wan.intervalStartedAt,null);
+    for(let i=0;i<10;i++)await step(1);assert.equal(polls,1);assert.ok(m.pendingFritzLag);
+    await step(29990);assert.equal(polls,2);
+    assert.equal(m.state.fritzbox.wan.intervalStartedAt,first.at);
+    assert.equal(m.state.fritzbox.wan.downloadDeltaBytes,300000);assert.equal(m.state.fritzbox.wan.uploadDeltaBytes,150000);
+    assert.equal(m.state.fritzbox.wan.downloadMbps,.08);
+  }finally{await m.close();}
+});
+
+test('slow router reads never block ping and preserve triggers arriving during the poll',async t=>{
+  let now=Date.now(),polls=0;
+  t.mock.method(Date,'now',()=>now);
+  const gates=[deferred(),deferred()],m=new Monitor({...fake,pingMany:async hosts=>hosts.map(host=>({host,ok:true,ms:160,status:'Success'}))});await m.refresh();
+  m.fritzClient={connected:true,disconnect(){this.connected=false;},poll:()=>gates[polls++].promise};
+  m.lastFritz=now-30000;m.lastDns=m.lastCounters=m.lastRefresh=now;
+  try {
+    await m.tick({background:true});assert.equal(polls,1);assert.equal(m.state.targets[0].stats.sent,1);
+    await m.maintenancePromise;
+    const firstPoll=m.fritzPoll;
+    now+=1000;await m.tick({background:true});await m.maintenancePromise;
+    assert.equal(polls,1);assert.equal(m.state.targets[0].stats.sent,2);assert.ok(m.pendingFritzLag);
+    const laterTrigger=m.pendingFritzLag.triggeredAt;
+    await m.maintenance();assert.equal(polls,1,'Single-flight maintenance cannot add another read');
+    gates[0].resolve({host:'fritz.box',wan:{},hosts:[]});await firstPoll;
+    assert.equal(m.state.fritzbox.history.length,1);assert.equal(m.pendingFritzLag.triggeredAt,laterTrigger);
+    now+=29999;m.lastCounters=m.lastDns=m.lastRefresh=now;await m.maintenance();assert.equal(polls,1);
+    now+=1;await m.maintenance();assert.equal(polls,2);
+    const secondPoll=m.fritzPoll;gates[1].resolve({host:'fritz.box',wan:{},hosts:[]});await secondPoll;
+    assert.equal(m.state.fritzbox.history[1].capture.triggeredAt,laterTrigger);assert.equal(m.pendingFritzLag,null);
+  }finally{gates.forEach(gate=>gate.resolve({host:'fritz.box',wan:{},hosts:[]}));await m.close();}
+});
+
+test('failed lag router reads keep captures retryable while respecting the cooldown',async t=>{
+  let now=Date.now(),polls=0;
+  t.mock.method(Date,'now',()=>now);
+  const m=new Monitor(fake);await m.refresh();
+  m.fritzClient={connected:true,disconnect(){this.connected=false;},poll:async()=>{polls++;if(polls===1)throw new Error('router busy');return {host:'fritz.box',wan:{},hosts:[]};}};
+  m.lastFritz=now-30000;m.lastCounters=m.lastDns=m.lastRefresh=now;
+  const mark=m.markLag();
+  try {
+    await m.maintenance();await m.fritzPoll;assert.equal(polls,1);assert.equal(m.state.fritzbox.error,'router busy');
+    assert.equal(m.pendingFritzLag.triggeredAt,mark.at);assert.equal(m.state.fritzbox.history.length,0);
+    now+=29999;await m.maintenance();assert.equal(polls,1);
+    now+=1;await m.maintenance();await m.fritzPoll;
+    assert.equal(polls,2);assert.equal(m.state.fritzbox.history[0].capture.triggeredAt,mark.at);assert.equal(m.pendingFritzLag,null);
+  }finally{await m.close();}
+});
+
+test('lag capture and late router answers cannot cross pause, reset, router change or close',async()=>{
+  for(const change of ['pause','reset','adapter','router','close'])for(const failure of [false,true]) {
+    const gate=deferred(),m=new Monitor(fake);await m.refresh();
+    m.fritzClient={connected:true,disconnect(){this.connected=false;},poll:()=>gate.promise};
+    m.markLag();const pending=m.refreshFritz({automatic:true});
+    m.markLag('newer trigger');assert.ok(m.pendingFritzLag);
+    if(change==='pause'){m.setMonitoring(false);m.markLag('paused');assert.equal(m.pendingFritzLag,null);m.setMonitoring(true);}
+    if(change==='reset')await m.reset();
+    if(change==='adapter')m.selectInterface('2');
+    if(change==='router')m.disconnectFritz(false);
+    if(change==='close')await m.prepareClose();
+    assert.equal(m.pendingFritzLag,null,change);
+    if(failure)gate.reject(new Error('late router error'));else gate.resolve({host:'old.box',wan:{totalBytesReceived:123,totalBytesSent:45},hosts:[]});
+    await pending;
+    assert.equal(m.pendingFritzLag,null,change);
+    assert.ok(!m.history.snapshot().records.some(record=>record.type==='fritzbox'),change);
+    assert.notEqual(m.state.fritzbox.error,'late router error',change);
+    await m.close();
+  }
+});
+
+test('WAN interval metadata requires continuous valid counters, uptime, session and at most 90 seconds',async t=>{
+  let now=Date.now();t.mock.method(Date,'now',()=>now);
+  const m=new Monitor(fake);let received=1000,sent=500,uptime=100;
+  const apply=()=>m.applyFritz({host:'fritz.box',device:{uptimeSeconds:uptime},wan:observedWan({totalBytesReceived:received,totalBytesSent:sent}),hosts:[]});
+  const unavailable=()=>{for(const field of ['intervalStartedAt','downloadDeltaBytes','uploadDeltaBytes','downloadMbps','uploadMbps'])assert.equal(m.state.fritzbox.wan[field],null,field);};
+  try {
+    apply();unavailable();let start=now;
+    now+=90000;received+=900000;sent+=450000;uptime+=90;apply();
+    assert.equal(m.state.fritzbox.wan.intervalStartedAt,new Date(start).toISOString());assert.equal(m.state.fritzbox.wan.downloadDeltaBytes,900000);assert.equal(m.state.fritzbox.wan.uploadDeltaBytes,450000);
+    now+=90001;received+=900000;sent+=450000;uptime+=90;apply();unavailable();
+    now+=1000;received=1;sent=1;apply();unavailable();
+    now+=1000;received+=100;sent+=100;uptime=1;apply();unavailable();
+    now+=1000;received+=100;sent+=100;uptime=undefined;apply();unavailable();
+    now+=1000;received+=100;sent+=100;uptime=2;apply();unavailable();
+    now+=1000;received+=100;sent+=100;uptime=3;m.fritzEpoch++;apply();unavailable();
+    start=now;now+=1000;apply();assert.equal(m.state.fritzbox.wan.intervalStartedAt,new Date(start).toISOString());assert.equal(m.state.fritzbox.wan.downloadDeltaBytes,0);
+    m.resetMeasurements();now+=1000;received+=100;apply();unavailable();
+    m.setMonitoring(false);m.setMonitoring(true);now+=1000;received+=100;apply();unavailable();
+    now+=1000;received=-1;apply();unavailable();assert.equal(m.fritzPrevious,null);
+  }finally{await m.close();}
+});
+
+test('PC traffic records preserve the valid counter interval and clear invalid baselines',async t=>{
+  let now=Date.now(),received=1000,sent=500,missing=false;
+  t.mock.method(Date,'now',()=>now);
+  const m=new Monitor({...fake,getTrafficCounters:async()=>missing?[]:[{id:'1',receivedBytes:received,sentBytes:sent}]});await m.refresh();
+  m.lastDns=m.lastRefresh=now;
+  const read=async()=>{m.lastCounters=0;await m.maintenance();return m.history.snapshot().records.filter(row=>row.type==='traffic').at(-1);};
+  try {
+    assert.equal((await read()).intervalStartedAt,null);let start=now;
+    now+=5000;received+=500000;sent+=250000;
+    const row=await read();assert.equal(row.intervalStartedAt,new Date(start).toISOString());assert.equal(row.downloadMbps,.8);
+    assert.equal(m.state.traffic.history.at(-1).intervalStartedAt,row.intervalStartedAt);
+    now+=5000;received=1;sent=1;assert.equal((await read()).intervalStartedAt,null);
+    now+=5000;missing=true;await read();assert.equal(m.state.traffic.intervalStartedAt,null);
+    now+=5000;missing=false;assert.equal((await read()).intervalStartedAt,null);
+    m.resetMeasurements();now+=5000;received+=100;assert.equal((await read()).intervalStartedAt,null);
+  }finally{await m.close();}
+});
+
+test('fresh lag router capture metadata and WAN byte intervals survive durable history',async()=>{
+  const dataDir=await mkdtemp(path.join(os.tmpdir(),'network-lag-router-'));
+  const m=new Monitor(fake,{dataDir});let restored;
+  const baseline={host:'fritz.box',device:{uptimeSeconds:100},wan:observedWan({totalBytesReceived:1000,totalBytesSent:500}),hosts:[]};
+  try {
+    await m.history.start();await m.persistence.beginSession();
+    m.applyFritz(baseline);rewindWan(m,30000);
+    const intervalStartedAt=new Date(m.fritzPrevious.time).toISOString();
+    m.fritzClient={connected:true,disconnect(){this.connected=false;},poll:async()=>({...baseline,device:{uptimeSeconds:130},wan:observedWan({totalBytesReceived:301000,totalBytesSent:150500})})};
+    const mark=m.markLag('isolated');await m.refreshFritz();await m.close();
+    restored=new Monitor(fake,{dataDir});await restored.history.start();
+    const row=restored.history.snapshot().records.find(record=>record.type==='fritzbox'&&record.capture);
+    assert.deepEqual(row.capture,{reason:'lag',triggeredAt:mark.at});
+    assert.equal(row.wan.intervalStartedAt,intervalStartedAt);assert.equal(row.wan.downloadDeltaBytes,300000);assert.equal(row.wan.uploadDeltaBytes,150000);
+    const raw=await readFile(path.join(dataDir,`messungen-${mark.at.slice(0,10)}.jsonl`),'utf8');assert.ok(raw.includes('"capture":{"reason":"lag"'));
+  }finally{await m.close();await restored?.close();if(path.dirname(path.resolve(dataDir))!==path.resolve(os.tmpdir())||!path.basename(dataDir).startsWith('network-lag-router-'))throw new Error('Unsicherer Testpfad');await rm(dataDir,{recursive:true,force:true});}
+});
 
 test('pause discards delayed Ping successes and errors, including quick resume',async()=>{
   for(const resume of [false,true])for(const failure of [false,true]) {
@@ -89,7 +285,7 @@ test('critical status changes produce red warning events and recover through war
     assert.ok(critical);assert.equal(critical.level,'error');
     assert.ok(!m.state.events.some(event=>event.title===`${gateway.label}: wieder unauffällig`));
     assert.ok(m.history.snapshot(1).records.some(record=>record.type==='event'&&record.title===critical.title&&record.level==='error'));
-    ms=50;for(let i=0;i<30;i++)await m.tick();
+    ms=60;for(let i=0;i<30;i++)await m.tick();
     assert.equal(gateway.stats.status,'warning');
     assert.ok(m.state.events.some(event=>event.title===`${gateway.label}: Messwerte auffällig`&&event.level==='warning'));
     ms=2;for(let i=0;i<30;i++)await m.tick();
@@ -98,8 +294,8 @@ test('critical status changes produce red warning events and recover through war
   }finally{await m.close();}
 });
 
-test('ping spike event uses the shared 30 ms boundary for local and internet targets',async()=>{
-  let ms=30;
+test('ping spike event uses the inclusive 100 ms boundary for local and internet targets',async()=>{
+  let ms=99.99;
   const m=new Monitor({...fake,pingMany:async hosts=>hosts.map(host=>({host,ok:true,ms,status:'Success'}))});
   m.maintenance=async()=>{};await m.refresh();
   try {
@@ -107,7 +303,7 @@ test('ping spike event uses the shared 30 ms boundary for local and internet tar
     const internet=m.state.targets.find(target=>target.kind==='internet');
     await m.tick();
     assert.ok(!m.state.events.some(event=>event.title.endsWith(': Ping-Spitze')));
-    ms=31;await m.tick();
+    ms=100;await m.tick();
     assert.ok(m.state.events.some(event=>event.title===`${gateway.label}: Ping-Spitze`));
     assert.ok(m.state.events.some(event=>event.title===`${internet.label}: Ping-Spitze`));
   } finally {await m.close();}
@@ -223,17 +419,17 @@ test('FRITZ login accepts an omitted or blank username and keeps destination val
 
 test('FRITZ history separates link capacity and throughput and rejects gaps and counter resets',async()=>{
   const m=new Monitor(fake);
-  const data={host:'fritz.box',device:{uptimeSeconds:100},wan:{status:'Connected',downstreamMbps:100,totalBytesReceived:1000000,totalBytesSent:500000},hosts:[],mesh:{nodes:[]}};
+  const data={host:'fritz.box',device:{uptimeSeconds:100},wan:observedWan({status:'Connected',downstreamMbps:100,totalBytesReceived:1000000,totalBytesSent:500000}),hosts:[],mesh:{nodes:[]}};
   m.applyFritz(data);
   assert.equal(m.state.fritzbox.wan.downloadMbps,null);
   assert.equal(m.state.fritzbox.wan.downstreamMbps,100);
-  m.fritzPrevious.time-=1000;
+  rewindWan(m,1000);
   m.applyFritz({...data,wan:{...data.wan,totalBytesReceived:2000000,totalBytesSent:1000000}});
   assert.ok(m.state.fritzbox.wan.downloadMbps>0);
   assert.ok(m.history.snapshot(1).records.every(r=>r.sessionId));
-  m.fritzPrevious.time-=91000;m.applyFritz(data);
+  rewindWan(m,91000);m.applyFritz(data);
   assert.equal(m.state.fritzbox.wan.downloadMbps,null);
-  m.fritzPrevious.time-=1000;m.applyFritz({...data,wan:{...data.wan,totalBytesReceived:1,totalBytesSent:1}});
+  rewindWan(m,1000);m.applyFritz({...data,wan:{...data.wan,totalBytesReceived:1,totalBytesSent:1}});
   assert.equal(m.state.fritzbox.wan.downloadMbps,null);
   m.applyFritz({...data,wan:{...data.wan,totalBytesReceived:null}});
   assert.equal(m.fritzPrevious,null);

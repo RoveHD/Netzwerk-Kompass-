@@ -16,7 +16,7 @@ test('live model deduplicates identical samples per host, sorts oldest to newest
 test('loss and local measurement errors remain distinct; only real ping values get latency tones', () => {
   const model = liveSignalModel({ targets: [makeTarget('wan', [
     { at: stamp(1), ok: true, ms: 18 },
-    { at: stamp(2), ok: true, ms: 31 },
+    { at: stamp(2), ok: true, ms: 100 },
     { at: stamp(3), ok: false, ms: null, status: 'down' },
     { at: stamp(4), ok: false, ms: null, status: 'measurement_error' },
   ])] });
@@ -34,4 +34,12 @@ test('ring data includes only enabled targets and preserves overview diagnosis s
   assert.deepEqual(model.targets.map(target => [target.label, target.status, target.tone]), [
     ['ok', 'ok', 'ok'], ['bad', 'critical', 'critical'],
   ]);
+});
+
+test('live signal marks exactly 100 ms as a Lag spike, while 99.99 ms stays below its threshold',()=>{
+  const model=liveSignalModel({targets:[makeTarget('wan',[
+    {at:stamp(1),ok:true,ms:50},{at:stamp(2),ok:true,ms:70},{at:stamp(3),ok:true,ms:99.99},
+    {at:stamp(4),ok:true,ms:100},{at:stamp(5),ok:true,ms:100.01},
+  ])]});
+  assert.deepEqual(model.samples.map(sample=>sample.tone),['ok','ok','ok','slow','slow']);
 });

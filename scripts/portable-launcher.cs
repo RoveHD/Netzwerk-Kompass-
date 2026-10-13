@@ -20,7 +20,7 @@ internal sealed class LauncherContext : ApplicationContext
 {
     private readonly NotifyIcon tray;
     private readonly Icon trayIcon;
-    private readonly Process node;
+    private Process node;
     private Process desktop;
     private NamedPipeServerStream desktopPipe;
     private StreamWriter desktopWriter;
@@ -35,6 +35,9 @@ internal sealed class LauncherContext : ApplicationContext
     private volatile bool ready, serverReady, closing;
     private System.Threading.Timer startupTimer;
     private JobHandle job;
+    private int backgroundRestarts;
+    private string gapStartedAt, gapResumedAt;
+    private string DesktopDirectory { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Netzwerk-Kompass-Daten", ".desktop"); } }
     private static void Trace(string message) { if(Environment.GetCommandLineArgs().Contains("--diagnostics"))try { Console.Out.WriteLine("LAUNCHER " + message); Console.Out.Flush(); } catch { } }
 
     private LauncherContext(string temp, bool suppressWindow)
@@ -47,6 +50,11 @@ internal sealed class LauncherContext : ApplicationContext
         trayIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         tray = new NotifyIcon { Icon = trayIcon ?? SystemIcons.Application, Text = "Netzwerk-Kompass startet…", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += delegate { OpenApp(); };
+        PrepareNode();
+    }
+
+    private void PrepareNode()
+    {
         node = new Process();
         node.StartInfo = new ProcessStartInfo(Path.Combine(tempRoot, "runtime", "node.exe"), "\"" + Path.Combine(tempRoot, "server.js") + "\" --launcher --no-browser") {
             WorkingDirectory = tempRoot, UseShellExecute = false, CreateNoWindow = true,
@@ -67,9 +75,11 @@ internal sealed class LauncherContext : ApplicationContext
     private void StartNode()
     {
         try {
+            WriteBackgroundStatus("starting");
             node.Start();
             Trace("node-started");
-            job = CreateKillJob(node);
+            if(job == null)job = CreateKillJob(node);
+            else if(!job.Assign(node)) { try { node.Kill(); } catch { } throw new InvalidOperationException("Der neue Node-Prozess konnte nicht an die Prozessüberwachung gebunden werden."); }
             if (job == null) { try { node.Kill(); } catch { } throw new InvalidOperationException("Der Node-Prozess konnte nicht an die Prozessüberwachung gebunden werden."); }
             node.BeginOutputReadLine(); node.BeginErrorReadLine();
             startupTimer = new System.Threading.Timer(delegate { if (!ready) BeginInvokeExit("Der lokale Server hat nicht rechtzeitig gestartet."); }, null, 60000, Timeout.Infinite);
@@ -138,6 +148,7 @@ internal sealed class LauncherContext : ApplicationContext
     private static string Hash(string value) { using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(value))).Replace("-", ""); }
     private void OutputLine(object sender, DataReceivedEventArgs e)
     {
+        if(!Object.ReferenceEquals(sender,node) || closing)return;
         if (e.Data == null) return;
         var match = Regex.Match(e.Data, @"^http://127\.0\.0\.1:[0-9]{1,5}$");
         if (!match.Success) return;
@@ -145,7 +156,7 @@ internal sealed class LauncherContext : ApplicationContext
         serverReady = true;
         Trace("server-ready");
         Dispatch(delegate {
-            if (closing) return;
+            if (closing || !Object.ReferenceEquals(sender,node)) return;
             appUrl = match.Value;
             try { StartDesktop(); } catch(Exception ex) { ShowError("Das Programmfenster konnte nicht vorbereitet werden: " + ex.Message); ExitThread(); }
         });
@@ -157,31 +168,45 @@ internal sealed class LauncherContext : ApplicationContext
         security.SetAccessRuleProtection(true,false);
         security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User,PipeAccessRights.FullControl,AccessControlType.Allow));
         desktopPipe = new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,0,0,security);
+        var pipe = desktopPipe;
         ThreadPool.QueueUserWorkItem(delegate {
             try {
-                desktopPipe.WaitForConnection();
+                pipe.WaitForConnection();
                 Trace("desktop-pipe-connected");
-                lock(pipeLock)desktopWriter = new StreamWriter(desktopPipe,new UTF8Encoding(false),1024,true) { AutoFlush = true };
-                using(var reader = new StreamReader(desktopPipe,Encoding.UTF8,false,1024,true)) {
+                lock(pipeLock) { if(!Object.ReferenceEquals(pipe,desktopPipe))return; desktopWriter = new StreamWriter(pipe,new UTF8Encoding(false),1024,true) { AutoFlush = true }; }
+                using(var reader = new StreamReader(pipe,Encoding.UTF8,false,1024,true)) {
                     string line;
-                    while(!closing && (line = reader.ReadLine()) != null) {
+                    while(!closing && Object.ReferenceEquals(pipe,desktopPipe) && (line = reader.ReadLine()) != null) {
                         if(line == "DESKTOP_READY" && !ready) {
                             Trace("desktop-ready");
                             ready = true;
-                            Dispatch(delegate { if(startupTimer != null)startupTimer.Dispose(); tray.Text = "Netzwerk-Kompass"; });
+                            Dispatch(delegate {
+                                if(!Object.ReferenceEquals(pipe,desktopPipe))return;
+                                if(startupTimer != null)startupTimer.Dispose(); tray.Text = "Netzwerk-Kompass";
+                                if(gapStartedAt != null && gapResumedAt == null) {
+                                    gapResumedAt = DateTime.UtcNow.ToString("o");
+                                    BackgroundLog("MONITOR_RESUMED " + gapStartedAt + " " + gapResumedAt + " restart=" + backgroundRestarts);
+                                }
+                                WriteBackgroundStatus("running");
+                            });
                             try { Console.Out.WriteLine(appUrl); Console.Out.Flush(); } catch { }
                         } else if(line.StartsWith("DESKTOP_ERROR ",StringComparison.Ordinal)) {
                             Trace("desktop-error");
-                            BeginInvokeExit(line.Substring(14)); return;
+                            string message = line.Substring(14);
+                            Dispatch(delegate { if(Object.ReferenceEquals(pipe,desktopPipe)) { ShowError(message); ExitThread(); } }); return;
                         }
                     }
                 }
-                Dispatch(delegate { if(!closing)ExitThread(); });
+                Dispatch(delegate { if(!closing && Object.ReferenceEquals(pipe,desktopPipe))ExitThread(); });
                 Trace("desktop-pipe-eof");
-            } catch(Exception ex) { if(!closing)BeginInvokeExit("Die Verbindung zum Programmfenster wurde unterbrochen: " + ex.Message); }
+            } catch(Exception ex) {
+                string message = "Die Verbindung zum Programmfenster wurde unterbrochen: " + ex.Message;
+                Dispatch(delegate { if(Object.ReferenceEquals(pipe,desktopPipe)) { ShowError(message); ExitThread(); } });
+            }
         });
         desktop = new Process();
-        desktop.StartInfo = new ProcessStartInfo(Path.Combine(tempRoot,"runtime","electron","Netzwerk-Kompass-Desktop.exe"),"\"" + Path.Combine(tempRoot,"desktop","main.cjs") + "\"" + (hiddenWindow ? " --hidden-window" : "")) {
+        bool startHidden = backgroundRestarts > 0 ? !restoreAfterRestart : hiddenWindow;
+        desktop.StartInfo = new ProcessStartInfo(Path.Combine(tempRoot,"runtime","electron","Netzwerk-Kompass-Desktop.exe"),"\"" + Path.Combine(tempRoot,"desktop","main.cjs") + "\"" + (startHidden ? " --hidden-window" : "")) {
             WorkingDirectory = tempRoot, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
@@ -191,6 +216,7 @@ internal sealed class LauncherContext : ApplicationContext
         env["NETZWERK_KOMPASS_URL"] = appUrl;
         env["NETZWERK_KOMPASS_CONTROL_PIPE"] = pipeName;
         env["NETZWERK_KOMPASS_DATA_DIR"] = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"Netzwerk-Kompass-Daten"));
+        env["NETZWERK_KOMPASS_BACKGROUND_RESTART"] = "1";
         desktop.ErrorDataReceived += ErrorLine;
         desktop.EnableRaisingEvents = true;
         desktop.Exited += DesktopExited;
@@ -206,9 +232,10 @@ internal sealed class LauncherContext : ApplicationContext
     private void NodeExited(object sender, EventArgs e)
     {
         Dispatch(delegate {
-            if(closing)return;
+            if(closing || !Object.ReferenceEquals(sender,node))return;
             node.WaitForExit();
             Trace("node-exit " + node.ExitCode);
+            if(node.ExitCode != 0 && TryBackgroundRestart())return;
             if(node.ExitCode != 0) ShowError("Die App wurde mit einem Fehler beendet (" + node.ExitCode + ").");
             else if(!ready) ShowError("Der lokale Server wurde beendet, bevor das Programmfenster bereit war.");
             ExitThread();
@@ -217,7 +244,7 @@ internal sealed class LauncherContext : ApplicationContext
     private void DesktopExited(object sender, EventArgs e)
     {
         Dispatch(delegate {
-            if(closing)return;
+            if(closing || !Object.ReferenceEquals(sender,desktop))return;
             desktop.WaitForExit();
             Trace("desktop-exit " + desktop.ExitCode);
             if(desktop.ExitCode != 0)ShowError("Das Programmfenster wurde mit einem Fehler beendet (" + desktop.ExitCode + ").");
@@ -232,6 +259,68 @@ internal sealed class LauncherContext : ApplicationContext
     private void ShowError(string message) { Environment.ExitCode = 1; if(hiddenWindow)try { Console.Error.WriteLine(message + ErrorDetails()); Console.Error.Flush(); } catch { } else MessageBox.Show(message + ErrorDetails(), "Netzwerk-Kompass", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     private void SendDesktop(string command) { lock(pipeLock) { if(desktopWriter != null)desktopWriter.WriteLine(command); } }
     private void OpenApp() { if(ready && desktop != null) try { if(!desktop.HasExited)SendDesktop("show"); } catch(Exception ex) { ShowError("Das Programmfenster konnte nicht angezeigt werden: " + ex.Message); } }
+    private bool BackgroundEnabled()
+    {
+        try {
+            string file = Path.Combine(DesktopDirectory,"background.json");
+            if(new FileInfo(file).Length > 1024)return false;
+            return Regex.IsMatch(File.ReadAllText(file), "^\\s*\\{\\s*\"enabled\"\\s*:\\s*true\\s*\\}\\s*$");
+        } catch { return false; }
+    }
+    private void BackgroundLog(string message)
+    {
+        try {
+            Directory.CreateDirectory(DesktopDirectory);
+            string file = Path.Combine(DesktopDirectory,"background.log");
+            if(File.Exists(file) && new FileInfo(file).Length > 1024*1024)File.WriteAllText(file,"");
+            File.AppendAllText(file, DateTime.UtcNow.ToString("o") + " " + message + "\n");
+        } catch { }
+        Trace(message);
+    }
+    private void WriteBackgroundStatus(string state)
+    {
+        try {
+            Directory.CreateDirectory(DesktopDirectory);
+            string gap = gapStartedAt == null ? "null" : "{\"startedAt\":\"" + gapStartedAt + "\",\"resumedAt\":" + (gapResumedAt == null ? "null" : "\"" + gapResumedAt + "\"") + ",\"reason\":\"node_exit\"}";
+            File.WriteAllText(Path.Combine(DesktopDirectory,"background-runtime.json"),"{\"state\":\"" + state + "\",\"running\":" + (state == "running" ? "true" : "false") + ",\"restarts\":" + backgroundRestarts + ",\"maxRestarts\":3,\"lastGap\":" + gap + "}");
+        } catch { }
+    }
+    private bool TryBackgroundRestart()
+    {
+        if(!ready || windowsShutdown || !BackgroundEnabled())return false;
+        gapStartedAt = DateTime.UtcNow.ToString("o"); gapResumedAt = null;
+        BackgroundLog("MONITOR_GAP " + gapStartedAt + " exit=" + node.ExitCode);
+        if(backgroundRestarts >= 3) { WriteBackgroundStatus("failed"); BackgroundLog("MONITOR_RESTART_LIMIT"); return false; }
+        backgroundRestarts++;
+        WriteBackgroundStatus("restarting");
+        ready = false; serverReady = false;
+        tray.Text = "Netzwerk-Kompass wird wiederhergestellt…";
+        if(startupTimer != null)startupTimer.Dispose();
+        Process previousDesktop = desktop;
+        bool restoreWindow = previousDesktop != null && previousDesktop.MainWindowHandle != IntPtr.Zero;
+        // Retire the old generation before its pipe EOF / Exited callbacks can
+        // close the replacement. Never run a second renderer or Node in parallel.
+        desktop = null;
+        lock(pipeLock) {
+            var previousPipe = desktopPipe; desktopPipe = null;
+            if(desktopWriter != null)try { desktopWriter.WriteLine("shutdown"); desktopWriter.Dispose(); } catch { }
+            desktopWriter = null;
+            if(previousPipe != null)try { previousPipe.Dispose(); } catch { }
+        }
+        if(previousDesktop != null) {
+            try {
+                if(!previousDesktop.WaitForExit(3000))previousDesktop.Kill();
+                if(!previousDesktop.WaitForExit(3000))throw new InvalidOperationException("Altes Programmfenster konnte nicht beendet werden.");
+                previousDesktop.Dispose();
+            } catch(Exception ex) { ShowError(ex.Message); ExitThread(); return true; }
+        }
+        node.Dispose();
+        PrepareNode();
+        restoreAfterRestart = restoreWindow;
+        StartNode();
+        return true;
+    }
+    private bool restoreAfterRestart;
     protected override void ExitThreadCore()
     {
         if (closing) { base.ExitThreadCore(); return; }

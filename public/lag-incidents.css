@@ -8,9 +8,10 @@
 .lag-phases-intro,.lag-coverage-note,.lag-phase-coverage,.lag-traffic-note{color:var(--muted);font-size:12px;line-height:1.55}
 .lag-phases-list{max-height:clamp(320px,62vh,650px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;display:grid;align-content:start;gap:8px;padding:8px}
 .lag-phases-list:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
-.lag-phase{padding:16px 16px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.lag-phase{min-width:0;padding:16px 16px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
 .lag-phase-summary strong{color:var(--muted)}
 .lag-phase-summary time{font-variant-numeric:tabular-nums}
+.lag-phase-traffic-preview{color:var(--teal)!important;font-weight:600}
 .lag-phase-coverage{margin:8px 0}
 .lag-phase-targets{max-height:130px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;margin:8px 0;padding-left:24px;color:var(--muted);font-size:12px}
 .lag-phase-targets li{margin:8px 0;overflow-wrap:anywhere}
@@ -33,4 +34,23 @@
 .lag-traffic-device span{margin:8px 0;color:var(--muted);font-variant-numeric:tabular-nums}
 .lag-traffic-device small{color:var(--muted);font-size:12px}
 .lag-traffic-note{margin:8px 0 0}
+.lag-phase-traffic-disclosure{min-width:0;max-width:100%;margin:8px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.lag-phase-traffic-disclosure>summary{padding:12px 16px;cursor:pointer;color:var(--teal);font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.lag-phase-traffic{min-width:0;max-width:100%;margin:0;padding:16px;border:0;border-top:1px solid var(--line);border-radius:0}
+.lag-phase-traffic h5{margin:8px 0;font-size:12px}
+.lag-traffic-sources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0;max-width:100%}
+.lag-traffic-source{min-width:0;max-width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;overflow-wrap:anywhere}
+.lag-traffic-source .lag-traffic-rate{overflow-wrap:anywhere}
+.lag-traffic-capacity,.lag-traffic-overload{font-size:12px;line-height:1.55}
+.lag-traffic-overload{color:var(--orange)}
+.lag-traffic-device-table{max-height:min(42vh,360px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid var(--line);border-radius:6px}
+.lag-traffic-device-row{display:grid;grid-template-columns:minmax(130px,1fr) minmax(190px,1.25fr) repeat(2,minmax(130px,1fr)) minmax(140px,1fr);gap:8px;align-items:start;min-width:760px;padding:8px;border-bottom:1px solid var(--line);font-size:12px;font-variant-numeric:tabular-nums}
+.lag-traffic-device-row>*{overflow-wrap:anywhere}
+.lag-traffic-device-row span{text-align:right}
+.lag-traffic-device-head{position:sticky;top:0;z-index:1;background:var(--panel);color:var(--muted)}
+.lag-traffic-intervals{max-height:180px;overflow:auto;margin:8px 0;padding-left:20px}
+.lag-traffic-interval{margin:6px 0;font-size:12px;line-height:1.5}
+.lag-traffic-interval span{display:block;color:var(--muted);font-variant-numeric:tabular-nums}
+.lag-traffic-device-title{margin:16px 0 8px}
+@media(max-width:650px){.lag-traffic-sources{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:500px){.lag-phases{padding:16px 8px}.lag-phase{padding:8px}.lag-phase-summary{align-items:flex-start;flex-direction:column;gap:8px}.lag-phase-traffic{padding:8px}}

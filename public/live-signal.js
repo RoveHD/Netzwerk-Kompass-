@@ -18,7 +18,7 @@ export function liveSignalModel(state) {
     const error = sample.status === 'measurement_error';
     const lost = !error && (sample.ok === false || sample.status === 'down' || sample.status === 'loss');
     const latency = !error && !lost && finite(sample.ms) ? sample.ms : null;
-    return { ...sample, latency, kind: error ? 'error' : lost ? 'loss' : latency == null ? 'unknown' : 'ping', tone: lost ? 'loss' : error || latency == null ? 'unknown' : latency > 30 ? 'slow' : 'ok' };
+    return { ...sample, latency, kind: error ? 'error' : lost ? 'loss' : latency == null ? 'unknown' : 'ping', tone: lost ? 'loss' : error || latency == null ? 'unknown' : latency >= 100 ? 'slow' : 'ok' };
   });
   return {
     samples,
@@ -61,11 +61,11 @@ export function renderLiveSignal(container, state) {
   issueLabel.classList.toggle('has-loss', losses > 0);
   track.dataset.running = String(!!state.monitoring);
   track.setAttribute('aria-label', `Ping-Verlauf öffnen: ${phase}. ${count}${issues ? `. ${issues}` : ''}`);
-  chart.title = 'Messwerte aller aktiven Ziele: von links nach rechts. Türkis: bis 30 ms · Gelb: über 30 ms · Rot: keine Ping-Antwort · Grau: kein gültiger Messwert.';
+  chart.title = 'Messwerte aller aktiven Ziele: von links nach rechts. Türkis: unter 100 ms · Gelb: Lag-Spitze ab 100 ms · Rot: keine Ping-Antwort · Grau: kein gültiger Messwert.';
   track.dataset.sampleCount = String(model.samples.length);
   const previous = rendered.get(track) || { keys: new Set(), initialized: false, bars: new Map() };
   const valid = model.samples.filter(sample => sample.latency != null).map(sample => sample.latency);
-  const max = Math.max(30, ...valid);
+  const max = Math.max(100, ...valid);
   const wanted = new Set();
   model.samples.forEach((sample, index) => {
     const slot = index + (60 - model.samples.length);

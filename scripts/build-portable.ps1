@@ -10,16 +10,18 @@ $destination = Join-Path $root ('dist\build-' + [Guid]::NewGuid().ToString('N'))
 $electronVersion = (Get-Content -LiteralPath (Join-Path $ElectronPath 'version') -Raw).Trim()
 $expectedElectronVersion = (Get-Content -LiteralPath (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).config.electronVersion
 if ($electronVersion -ne $expectedElectronVersion) { throw "Electron-Version $electronVersion passt nicht zur festgelegten Version $expectedElectronVersion." }
-$relativeFiles = @('server.js', 'package.json', 'README.md', 'Netzwerk-Kompass-starten.cmd', 'scripts\probe.ps1', 'scripts\games.ps1', 'scripts\game-packets.ps1', 'scripts\game-packets.cs', 'runtime\node.exe', 'runtime\NODE-LICENSE.txt', 'runtime\NODE-VERSION.txt')
-foreach ($folder in @('lib', 'public', 'public\brand', 'public\fonts', 'desktop', 'scripts', 'runtime', 'runtime\electron', 'runtime\electron\locales', 'runtime\electron\resources')) {
+$relativeFiles = @('server.js', 'package.json', 'README.md', 'Netzwerk-Kompass-starten.cmd', 'scripts\probe.ps1', 'scripts\games.ps1', 'scripts\game-packets.ps1', 'scripts\game-packets.cs', 'scripts\secret-store.ps1', 'runtime\node.exe', 'runtime\NODE-LICENSE.txt', 'runtime\NODE-VERSION.txt')
+foreach ($folder in @('docs', 'lib', 'public', 'public\brand', 'public\fonts', 'desktop', 'scripts', 'runtime', 'runtime\electron', 'runtime\electron\locales', 'runtime\electron\resources')) {
     [void](New-Item -ItemType Directory -Path (Join-Path $destination $folder) -Force)
 }
 foreach ($file in @('server.js', 'package.json', 'README.md', 'Netzwerk-Kompass-starten.cmd')) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $destination -Force
 }
 Get-ChildItem -LiteralPath (Join-Path $root 'lib') -Filter '*.js' | Copy-Item -Destination (Join-Path $destination 'lib') -Force
+$relativeFiles += 'docs\ursachenanalyse.md'
+Copy-Item -LiteralPath (Join-Path $root 'docs\ursachenanalyse.md') -Destination (Join-Path $destination 'docs\ursachenanalyse.md') -Force
 $relativeFiles += @(Get-ChildItem -LiteralPath (Join-Path $root 'lib') -Filter '*.js' -File | ForEach-Object { 'lib\' + $_.Name })
-foreach ($file in @('overview-details.js', 'dashboard.css', 'live-signal.js', 'live-signal.css', 'ui-presentation.js', 'ui-help.js', 'graphite.css', 'workspace.css', 'workspace-panels.css', 'network-health.js', 'network-health.css', 'game-comparison.js', 'game-comparison.css', 'lag-incidents.js', 'lag-incidents.css', 'index.html', 'style.css', 'app.js', 'games.js', 'games.css', 'overview.js', 'overview.css', 'fritzbox.js', 'ai.js', 'diagnosis-result.js', 'diagnosis-result.css', 'navigation.js', 'lag-hotkey.js', 'history-selection.js', 'ping-chart.js', 'ping-chart.css', 'ping-statistics.js', 'traffic-history.js', 'storage.js', 'scroll-state.js', 'speedtest-ui.js', 'speed-history.js', 'speedtest-options.js', 'stress-test-ui.js', 'speedtest.css', 'topology.js', 'topology.css')) {
+foreach ($file in @('incident-view.js', 'incident-view.css', 'diagnostic-settings.js', 'diagnostic-settings.css', 'peer-monitor.js', 'peer-monitor.css', 'background-monitor.js', 'overview-details.js', 'dashboard.css', 'live-signal.js', 'live-signal.css', 'ui-presentation.js', 'ui-help.js', 'graphite.css', 'workspace.css', 'workspace-panels.css', 'network-health.js', 'network-health.css', 'game-comparison.js', 'game-comparison.css', 'lag-incidents.js', 'lag-incidents.css', 'index.html', 'style.css', 'app.js', 'games.js', 'games.css', 'overview.js', 'overview.css', 'fritzbox.js', 'ai.js', 'diagnosis-result.js', 'diagnosis-result.css', 'navigation.js', 'lag-hotkey.js', 'history-selection.js', 'ping-chart.js', 'ping-chart.css', 'ping-statistics.js', 'traffic-history.js', 'storage.js', 'scroll-state.js', 'speedtest-ui.js', 'speed-history.js', 'speedtest-options.js', 'stress-test-ui.js', 'speedtest.css', 'topology.js', 'topology.css')) {
     Copy-Item -LiteralPath (Join-Path $root ('public\' + $file)) -Destination (Join-Path $destination 'public') -Force
     $relativeFiles += 'public\' + $file
 }
@@ -33,7 +35,7 @@ foreach ($file in @('geist-variable.woff2', 'geist-mono-variable.woff2', 'LICENS
     Copy-Item -LiteralPath (Join-Path $root $relative) -Destination (Join-Path $destination $relative) -Force
     $relativeFiles += $relative
 }
-foreach ($file in @('main.cjs', 'policy.cjs', 'preload.cjs', 'lag-hotkey.cjs', 'native-hotkey.cjs')) {
+foreach ($file in @('main.cjs', 'policy.cjs', 'preload.cjs', 'lag-hotkey.cjs', 'native-hotkey.cjs', 'background.cjs', 'background-server.cjs', 'server-lifecycle.cjs')) {
     Copy-Item -LiteralPath (Join-Path $root ('desktop\' + $file)) -Destination (Join-Path $destination 'desktop') -Force
     $relativeFiles += 'desktop\' + $file
 }
@@ -48,7 +50,7 @@ $desktopExecutable = 'runtime\electron\Netzwerk-Kompass-Desktop.exe'
 Copy-Item -LiteralPath (Join-Path $ElectronPath 'electron.exe') -Destination (Join-Path $destination $desktopExecutable) -Force
 $relativeFiles += $desktopExecutable
 Copy-Item -LiteralPath (Join-Path $root 'scripts\probe.ps1') -Destination (Join-Path $destination 'scripts') -Force
-foreach ($gameScript in @('games.ps1', 'game-packets.ps1', 'game-packets.cs', 'lag-hotkey.ps1', 'lag-hotkey.cs')) {
+foreach ($gameScript in @('games.ps1', 'game-packets.ps1', 'game-packets.cs', 'lag-hotkey.ps1', 'lag-hotkey.cs', 'secret-store.ps1')) {
     Copy-Item -LiteralPath (Join-Path $root ('scripts\' + $gameScript)) -Destination (Join-Path $destination 'scripts') -Force
     if ($gameScript.StartsWith('lag-hotkey.')) { $relativeFiles += 'scripts\' + $gameScript }
 }

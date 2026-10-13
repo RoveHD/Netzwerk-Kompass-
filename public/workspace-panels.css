@@ -93,7 +93,8 @@
 .mesh-topology-scroll { border-color:var(--line); border-radius:6px; background:var(--panel-subtle); }
 .mesh-link { stroke:var(--muted); }
 .mesh-link-wlan { stroke:var(--accent); }
-.mesh-link-label, .mesh-link-rate { fill:var(--text); stroke:var(--panel-subtle); }
+.mesh-link.mesh-link-suspect, .mesh-link-group.is-selected .mesh-link.mesh-link-suspect { stroke:var(--orange); stroke-width:5; }
+.mesh-link-label, .mesh-link-rate { fill:var(--text); stroke:none; }
 .mesh-node { border-color:var(--line); border-radius:6px; background:var(--panel-raised); }
 .mesh-node-master { border-color:var(--accent); }
 .mesh-node-role, .mesh-node-address { color:var(--muted); }

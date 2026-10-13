@@ -47,6 +47,7 @@ function renderStatus(fritzbox) {
   $('#fritzbox-host').disabled = !!busy;
   $('#fritzbox-username').disabled = !!busy;
   $('#fritzbox-password').disabled = !!busy;
+  $('#fritzbox-remember').disabled = !!busy;
   $('#fritzbox-connect').textContent = fritzbox?.connecting ? 'Verbinde …' : 'Verbinden und lesen';
 }
 let routerTab = 'overview';
@@ -123,10 +124,10 @@ function renderDevice(fritzbox) {
   if (!fritzbox?.connected) { const note=node('div', 'history-empty', fritzbox?.error ? 'Verbindung fehlgeschlagen. Prüfe Zugangsdaten und TR-064-Zugriff.' : 'Melde dich an deiner FRITZ!Box an.');if(!fritzbox?.error)note.title=note.dataset.help='Danach erscheinen Gesamtverkehr, gemeldete Geräte, Mesh, WLAN und Anschlussdaten direkt aus der Box. Ein PC-Gerätescan allein liefert diese Routerdaten nicht.';root.append(note); return; }
   const panel=routerPanels(root);let data=panel('overview');
   const device = fritzbox.device && typeof fritzbox.device === 'object' ? fritzbox.device : {}; const wan = fritzbox.wan && typeof fritzbox.wan === 'object' ? fritzbox.wan : {}; const dsl = fritzbox.dsl && typeof fritzbox.dsl === 'object' ? fritzbox.dsl : {}; const mesh = fritzbox.mesh && typeof fritzbox.mesh === 'object' ? fritzbox.mesh : {};
-  const overview = node('div', 'fritzbox-facts'); addFact(overview, 'Modell', device.model); addFact(overview, 'Firmware', device.firmware); addFact(overview, 'Router-Laufzeit', formatUptime(device.uptimeSeconds)); addFact(overview, 'WAN-Status', wan.status); addFact(overview, 'WAN-Laufzeit', formatUptime(wan.uptimeSeconds)); addFact(overview, 'Gemessener Download', formatRate(wan.downloadMbps)); addFact(overview, 'Gemessener Upload', formatRate(wan.uploadMbps)); addFact(overview, 'Anschlussrate Downstream', formatRate(wan.downstreamMbps)); addFact(overview, 'Anschlussrate Upstream', formatRate(wan.upstreamMbps)); addFact(overview, 'Empfangen gesamt', formatBytes(wan.totalBytesReceived)); addFact(overview, 'Gesendet gesamt', formatBytes(wan.totalBytesSent)); data.append(overview);
+  data.append(overviewFacts(fritzbox));
   if (dsl.error || wan.error) { const error = node('div', 'fritzbox-router-error', `${wan.error ? `WAN-Fehler: ${valueText(wan.error)} ` : ''}${dsl.error ? `DSL-Fehler: ${valueText(dsl.error)}` : ''}`); data.append(error); }
   const hosts = Array.isArray(fritzbox.hosts) ? fritzbox.hosts : [];
-  facts(data,[['Bekannte Geräte',hosts.length],['Aktive Geräte',hosts.filter(host=>host.active===true).length],['Geräte mit Internetzählern',(fritzbox.deviceTraffic||[]).filter(row=>row.available).length],['Mesh-Knoten',(mesh.nodes||[]).length]]);
+  data.append(liveCounts(fritzbox));
   data.append(trafficHistoryButton());
   data=panel('connection');
   const cable=/cable/i.test(device.model||'');
@@ -146,18 +147,11 @@ function renderDevice(fritzbox) {
   if (nodes.length) data.append(table(['Name', 'Modell', 'IP-Adresse', 'Rolle'], nodes.map((item) => [item.name, item.model, item.ip, item.role]))); else data.append(node('div', 'fritzbox-empty', 'Keine Mesh-Knoten verfügbar.'));
   data=panel('traffic');
   section(data,'FRITZ!Box gesamt','Internetverkehr des gesamten Anschlusses, direkt aus der Box.');
-  facts(data,[['Download',formatRate(wan.downloadMbps)],['Upload',formatRate(wan.uploadMbps)],['Empfangen (Zählerstand)',formatBytes(wan.totalBytesReceived)],['Gesendet (Zählerstand)',formatBytes(wan.totalBytesSent)]]);
+  data.append(liveWanFacts(fritzbox));
   data.append(trafficHistoryButton());
   section(data, 'Internetverkehr je Gerät', 'Werte aus dem letzten gültigen Messintervall.','Gemessener Internetverkehr, sofern die Box Bytezähler liefert. Die Datenmenge gehört nur zum letzten gültigen Messintervall. Längere Zeiträume und auswählbare Kurven stehen unter Verlauf → Datenverkehr.');
-  const traffic=Array.isArray(fritzbox.deviceTraffic)?fritzbox.deviceTraffic:[];
-  if(traffic.length)data.append(table(['Gerät','Download','Upload','Letztes Intervall ↓ / ↑','Messzeit / Verfügbarkeit'],traffic.map(row=>{
-    const valid=row.rateAvailable===true;
-    const amount=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0?`${(value/1000000).toLocaleString('de-DE',{maximumFractionDigits:2})} MB`:'–';
-    const period=valid&&row.intervalStartedAt&&row.at?`${new Date(row.intervalStartedAt).toLocaleTimeString('de-DE')}–${new Date(row.at).toLocaleTimeString('de-DE')}`:row.measurementReason||row.reason||'Noch keine zwei passenden Messungen';
-    return [[row.name||'Unbenanntes Gerät',row.ip].filter(Boolean).join(' · '),formatRate(valid?row.downloadMbps:null),formatRate(valid?row.uploadMbps:null),valid?`${amount(row.downloadDeltaBytes)} / ${amount(row.uploadDeltaBytes)}`:'–',period];
-  })));
-  else data.append(node('p','fritzbox-empty',fritzbox.deviceTrafficCapability?.reason||'Die Box liefert derzeit keine Internet-Bytezähler einzelner Geräte.'));
-  if(!traffic.some(row=>row.available)){const note=node('p','traffic-source-note','Keine Einzelgeräte-Zähler verfügbar.');note.title=note.dataset.help='Der Online-Monitor der FRITZ!Box unterstützt Einzelgeräte. Die Datenfreigabe an Apps hängt zusätzlich von FRITZ!OS und der Geräteerfassung der Box ab. Prüfe in der Box unter Internet → Online-Monitor die erfassten Geräte. Fehlende Zähler bleiben hier unbekannt.';data.append(note);}
+  data.append(liveDeviceTraffic(fritzbox));
+  const resolution = node('p', 'fritzbox-traffic-resolution field-help', `${trafficPollingText(fritzbox)}.`); data.append(resolution);
   data=panel('mesh');
   section(data, 'Bekannte Mesh-Verbindungen');
   const meshName = id => nodes.find(item => item.id === id)?.name || id;
@@ -178,14 +172,86 @@ function renderDevice(fritzbox) {
 }
 let activePost = async () => { throw new Error('Routeraktion ist noch nicht bereit.'); };
 let lastFritzboxState = null;
+let lastFritzboxPayload = null;
 let localBusy = false;
-let lastRenderFingerprint = null;
+let lastFullRenderFingerprint = null;
+let lastFastTrafficFingerprint = null;
 let monitoredTargets = [];
 let currentRepeaterHost = null;
 const liveTopologyState = {};
 const historyTopologyState = {};
 let historySnapshotKey = null;
 let capabilitiesOpen = false;
+function trafficStamp(value) { const parsed = Date.parse(value); return Number.isFinite(parsed) ? new Date(parsed).toLocaleString('de-DE') : 'unbekannt'; }
+function trafficPollingText(fritzbox) {
+  const measurement = fritzbox?.trafficMeasurement || {};
+  const interval = value => Number.isFinite(value) && value > 0 ? `ca. ${(value / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s` : 'unbekannt';
+  return `WAN-Abfrage ${interval(measurement.wanIntervalMs)} · Geräteabfrage ${interval(measurement.deviceIntervalMs)} · Abfragezeitfenster; interner Zählertakt unbekannt`;
+}
+function renderFreshness(fritzbox) {
+  const full = fritzbox?.updatedAt ? `Routerdaten ${trafficStamp(fritzbox.updatedAt)}` : 'Routerdatenzeitpunkt unbekannt';
+  const wanTraffic = fritzbox?.trafficUpdatedAt ? ` · WAN-Verkehr ${trafficStamp(fritzbox.trafficUpdatedAt)}` : ' · WAN-Verkehrszeitpunkt unbekannt';
+  const deviceTraffic = fritzbox?.deviceTrafficUpdatedAt ? ` · Geräteverkehr ${trafficStamp(fritzbox.deviceTrafficUpdatedAt)}` : ' · Geräteverkehrszeitpunkt unbekannt';
+  const measurement = fritzbox?.trafficMeasurement;
+  const error = measurement?.error ? ` · letzte Abfrage fehlgeschlagen: ${measurement.error}` : '';
+  $('#fritzbox-updated').textContent = `${full}${wanTraffic}${deviceTraffic} · ${trafficPollingText(fritzbox)}${error}`;
+  $('#fritzbox-updated').title = 'Abfragehäufigkeit der App. Die FRITZ!Box kann interne Zähler über ein eigenes, hier unbekanntes Zeitfenster aktualisieren.';
+}
+function overviewFacts(fritzbox) {
+  const device = fritzbox?.device && typeof fritzbox.device === 'object' ? fritzbox.device : {};
+  const wan = fritzbox?.wan && typeof fritzbox.wan === 'object' ? fritzbox.wan : {};
+  const overview = node('div', 'fritzbox-facts fritzbox-live-overview');
+  addFact(overview, 'Modell', device.model); addFact(overview, 'Firmware', device.firmware); addFact(overview, 'Router-Laufzeit', formatUptime(device.uptimeSeconds));
+  addFact(overview, 'WAN-Status', wan.status); addFact(overview, 'WAN-Laufzeit', formatUptime(wan.uptimeSeconds)); addFact(overview, 'Gemessener Download', formatRate(wan.downloadMbps)); addFact(overview, 'Gemessener Upload', formatRate(wan.uploadMbps));
+  addFact(overview, 'Anschlussrate Downstream', formatRate(wan.downstreamMbps)); addFact(overview, 'Anschlussrate Upstream', formatRate(wan.upstreamMbps)); addFact(overview, 'Empfangen gesamt', formatBytes(wan.totalBytesReceived)); addFact(overview, 'Gesendet gesamt', formatBytes(wan.totalBytesSent));
+  return overview;
+}
+function liveCounts(fritzbox) {
+  const hosts = Array.isArray(fritzbox?.hosts) ? fritzbox.hosts : []; const mesh = fritzbox?.mesh || {};
+  const deviceTraffic = Array.isArray(fritzbox?.deviceTraffic) ? fritzbox.deviceTraffic : [];
+  const deviceCount = Number.isFinite(fritzbox?.deviceTrafficCount) ? fritzbox.deviceTrafficCount : deviceTraffic.length;
+  const noInterval = deviceTraffic.filter(row => row.rateAvailable !== true).length;
+  const deviceTrafficLabel = `${deviceCount} beobachtet · ${noInterval} ohne passendes Zählerintervall${fritzbox?.deviceTrafficTruncated ? ' (mindestens; Liste gekürzt)' : ''}`;
+  const grid = node('div', 'fritzbox-facts fritzbox-live-counts');
+  for (const [label, value] of [['Bekannte Geräte', hosts.length], ['Aktive Geräte', hosts.filter(host => host.active === true).length], ['Geräte (Routerbeobachtung)', deviceTrafficLabel], ['Mesh-Knoten', (mesh.nodes || []).length]]) addFact(grid, label, value);
+  return grid;
+}
+function liveWanFacts(fritzbox) {
+  const wan = fritzbox?.wan || {}; const grid = node('div', 'fritzbox-facts fritzbox-live-wan-facts');
+  for (const [label, value] of [['Download', formatRate(wan.downloadMbps)], ['Upload', formatRate(wan.uploadMbps)], ['Empfangen (Zählerstand)', formatBytes(wan.totalBytesReceived)], ['Gesendet (Zählerstand)', formatBytes(wan.totalBytesSent)]]) addFact(grid, label, value);
+  return grid;
+}
+function liveDeviceTraffic(fritzbox) {
+  const container = node('div', 'fritzbox-live-device-traffic'); const traffic = Array.isArray(fritzbox?.deviceTraffic) ? fritzbox.deviceTraffic : [];
+  if (traffic.length) container.append(table(['Gerät','Download','Upload','Letztes Intervall ↓ / ↑','Messzeit / Verfügbarkeit'], traffic.map(row => {
+    const valid = row.rateAvailable === true;
+    const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? `${(value / 1000000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} MB` : '–';
+    const period = valid && row.intervalStartedAt && row.at ? `${new Date(row.intervalStartedAt).toLocaleTimeString('de-DE')}–${new Date(row.at).toLocaleTimeString('de-DE')}` : row.measurementReason || row.reason || 'Noch keine zwei passenden Messungen';
+    return [[row.name || 'Unbenanntes Gerät', row.ip].filter(Boolean).join(' · '), formatRate(valid ? row.downloadMbps : null), formatRate(valid ? row.uploadMbps : null), valid ? `${amount(row.downloadDeltaBytes)} / ${amount(row.uploadDeltaBytes)}` : '–', period];
+  })));
+  else container.append(node('p', 'fritzbox-empty', fritzbox?.deviceTrafficCapability?.reason || 'Die Box liefert derzeit keine Internet-Bytezähler einzelner Geräte.'));
+  if (!traffic.some(row => row.available)) { const note = node('p', 'traffic-source-note', 'Keine Einzelgeräte-Zähler verfügbar.'); note.title = note.dataset.help = 'Der Online-Monitor der FRITZ!Box unterstützt Einzelgeräte. Die Datenfreigabe an Apps hängt zusätzlich von FRITZ!OS und der Geräteerfassung der Box ab. Prüfe in der Box unter Internet → Online-Monitor die erfassten Geräte. Fehlende Zähler bleiben hier unbekannt.'; container.append(note); }
+  return container;
+}
+function renderLiveTraffic(fritzbox) {
+  const overview = $('#router-panel-overview .fritzbox-live-overview'); if (overview) overview.replaceWith(overviewFacts(fritzbox));
+  const counts = $('#router-panel-overview .fritzbox-live-counts'); if (counts) counts.replaceWith(liveCounts(fritzbox));
+  const wan = $('#router-panel-traffic .fritzbox-live-wan-facts'); if (wan) wan.replaceWith(liveWanFacts(fritzbox));
+  const devices = $('#router-panel-traffic .fritzbox-live-device-traffic'); if (devices) devices.replaceWith(liveDeviceTraffic(fritzbox));
+  const resolution = $('#router-panel-traffic .fritzbox-traffic-resolution');
+  if (resolution) resolution.textContent = `${trafficPollingText(fritzbox)}.`;
+}
+function fullDataFingerprint(fritzbox, targetFingerprint) {
+  const source = fritzbox && typeof fritzbox === 'object' ? { ...fritzbox, wan: { ...(fritzbox.wan || {}) } } : fritzbox;
+  if (source && typeof source === 'object') {
+    for (const key of ['busy','trafficCollection','downloadMbps','uploadMbps','totalBytesReceived','totalBytesSent','intervalStartedAt','trafficUpdatedAt','deviceTrafficUpdatedAt','trafficMeasurement','deviceTraffic','deviceTrafficCapability','deviceTrafficCount','deviceTrafficTruncated']) delete source[key];
+    if (source.wan && typeof source.wan === 'object') for (const key of ['downloadMbps','uploadMbps','totalBytesReceived','totalBytesSent','downloadDeltaBytes','uploadDeltaBytes','elapsedMs','intervalStartedAt','intervalEndedAt','intervalStartedAtWan','measurementBasis','observationWindow','timingUncertaintyMs','counterUpdatedAtAvailable','counterUpdateFrequencyKnown','measurementReason','reason','sampling','receiveSampling','sendSampling','source','scope']) delete source.wan[key];
+  }
+  return JSON.stringify([source, targetFingerprint, currentRepeaterHost]);
+}
+function fastTrafficFingerprint(fritzbox) {
+  return JSON.stringify([fritzbox?.wan, fritzbox?.deviceTraffic, fritzbox?.deviceTrafficCapability, fritzbox?.deviceTrafficCount, fritzbox?.deviceTrafficTruncated, fritzbox?.trafficUpdatedAt, fritzbox?.deviceTrafficUpdatedAt, fritzbox?.trafficMeasurement]);
+}
 function renderWlan(parent, radios) {
   if (!Array.isArray(radios) || !radios.length) { parent.append(node('p', 'fritzbox-empty', 'Keine WLAN-Funknetze von der Box gemeldet.')); return; }
   parent.append(table(['Funknetz / SSID', 'Band', 'Aktiv', 'Status', 'Kanal', 'Standard', 'Verbundene Geräte'], radios.map(radio => [radio.ssid, radio.frequencyBand, radio.enabled, radio.status, radio.channel === 0 ? 'Automatisch / unbekannt' : radio.channel, radio.standard, radio.associatedDevices])));
@@ -195,12 +261,21 @@ function renderWlan(parent, radios) {
 function render(payload) {
   const fritzbox = payload && Object.hasOwn(payload, 'fritzbox') ? payload.fritzbox : payload;
   if (payload && Object.hasOwn(payload, 'fritzbox')) { monitoredTargets = Array.isArray(payload.targets) ? payload.targets : []; currentRepeaterHost = payload.repeaterHost || null; }
-  lastFritzboxState = fritzbox; renderStatus(fritzbox);
+  lastFritzboxState = fritzbox; lastFritzboxPayload = payload; renderStatus(fritzbox); renderFreshness(fritzbox);
   $('#fritzbox-host').value = $('#fritzbox-host').value || fritzbox?.host || 'fritz.box';
-  $('#fritzbox-updated').textContent = fritzbox?.updatedAt ? `Aktualisiert ${new Date(fritzbox.updatedAt).toLocaleString('de-DE')}` : 'Noch keine Routerdaten geladen';
   setMessage(fritzbox?.error || '', !!fritzbox?.error);
   const targetFingerprint = monitoredTargets.map(({ host, kind, enabled }) => [host, kind, enabled]);
-  const fingerprint = JSON.stringify([fritzbox || null, targetFingerprint, currentRepeaterHost]); if (fingerprint === lastRenderFingerprint) return; lastRenderFingerprint = fingerprint;
+  if (!$('#page-router') || $('#page-router').hidden) return;
+  const fullFingerprint = fullDataFingerprint(fritzbox || null, targetFingerprint);
+  const trafficFingerprint = fastTrafficFingerprint(fritzbox || null);
+  if (fullFingerprint === lastFullRenderFingerprint) {
+    if (trafficFingerprint !== lastFastTrafficFingerprint) {
+      captureScroll($('#fritzbox-data')); renderLiveTraffic(fritzbox); restoreScroll($('#fritzbox-data'));
+      lastFastTrafficFingerprint = trafficFingerprint;
+    }
+    return;
+  }
+  lastFullRenderFingerprint = fullFingerprint; lastFastTrafficFingerprint = trafficFingerprint;
   const focusedId = $('#fritzbox-data').contains(document.activeElement) ? document.activeElement.id : '';
   const selection = focusedId&&typeof document.activeElement.selectionStart==='number' ? [document.activeElement.selectionStart,document.activeElement.selectionEnd] : null;
   captureScroll($('#fritzbox-data'));
@@ -211,11 +286,13 @@ function render(payload) {
 export function initFritzbox(post) {
   activePost = post;
   window.addEventListener('fritzbox-state', (event) => render(event.detail));
+  const routerPage = $('#page-router');
+  if (routerPage && typeof MutationObserver === 'function') new MutationObserver(() => { if (!routerPage.hidden && lastFritzboxPayload) render(lastFritzboxPayload); }).observe(routerPage, { attributes: true, attributeFilter: ['hidden'] });
   $('#fritzbox-login').addEventListener('submit', async (event) => {
     event.preventDefault(); if (localBusy || lastFritzboxState?.connecting || lastFritzboxState?.busy) return;
     const host = $('#fritzbox-host').value.trim() || 'fritz.box'; const username = $('#fritzbox-username').value.trim(); let password = $('#fritzbox-password').value;
     localBusy = true; setMessage(''); renderStatus({ ...lastFritzboxState, connecting: true });
-    try { await post('/api/fritzbox/connect', { host, username, password }); }
+    try { await post('/api/fritzbox/connect', { host, username, password, remember: $('#fritzbox-remember').checked }); }
     catch (error) { const details = /401|403/.test(error.message) ? `Anmeldung abgelehnt oder fehlende Rechte. Prüfe Benutzerrechte und „Zugriff für Anwendungen zulassen“. ${error.message}` : /TR.?064|disabled|deaktiv/i.test(error.message) ? `Der FRITZ!Box-Zugriff für Anwendungen (TR-064) ist möglicherweise deaktiviert. ${error.message}` : error.message; setMessage(details, true); }
     finally { password = ''; $('#fritzbox-password').value = ''; localBusy = false; renderStatus(lastFritzboxState); }
   });
@@ -255,7 +332,9 @@ function historicalChart(parent, records) {
   parent.append(svg); const legend = node('div', 'history-legend'); [['WAN-Download', 'var(--series-primary)'], ['WAN-Upload', 'var(--series-secondary)']].forEach(([label, color]) => { const entry = node('span'); const dot = node('i'); dot.style.backgroundColor = color; entry.append(dot, document.createTextNode(label)); legend.append(entry); }); parent.append(legend); parent.append(node('p', 'chart-note', 'Zeitachse zeigt vorhandene Routermessungen; lange Messpausen sind unterbrochen.'));
 }
 export function renderFritzboxHistory(view, records) {
-  const history = [...records].sort((a, b) => new Date(a.at) - new Date(b.at)); const latest = history.at(-1);
+  const history = [...records].sort((a, b) => new Date(a.at) - new Date(b.at));
+  const fullSnapshots = history.filter(record => record.kind !== 'traffic');
+  const latestFull = fullSnapshots.at(-1);
   section(view, 'FRITZ!Box-Daten');
   if (!history.length) { view.append(node('div', 'history-empty', 'Keine FRITZ!Box-Messungen im gewählten Zeitraum.')); return; }
   section(view, 'Mesh-Topologie im Verlauf', 'Wähle einen gespeicherten Messzeitpunkt.','Gespeicherte Routermeldungen auswählen. Ältere Messungen ohne Graphdaten können nicht rekonstruiert werden.');
@@ -278,7 +357,7 @@ export function renderFritzboxHistory(view, records) {
     show(selected); select.addEventListener('change', () => { const record = snapshots.find(item => key(item) === select.value); if (record) { historySnapshotKey = select.value; show(record); } });
   } else view.append(node('p', 'history-empty', 'Diese älteren Routermessungen enthalten keine gespeicherten Mesh-Knoten und Verbindungen. Neue Messungen speichern die Topologie.'));
   const metrics = node('div', 'history-metrics'); metrics.append(node('article', 'history-metric')); const nodes = [
-    ['Snapshots', history.length], ['WAN-Status', latest.wan?.status], ['Geräte (letzter Snapshot)', latest.hostCount], ['Aktive Geräte', latest.activeHostCount], ['Mesh-Knoten', latest.meshNodes]
+    ['Traffic-/Routermessungen', history.length], ['WAN-Status (Vollabfrage)', latestFull?.wan?.status], ['Geräte (letzte Vollabfrage)', latestFull?.hostCount], ['Aktive Geräte', latestFull?.activeHostCount], ['Mesh-Knoten', latestFull?.meshNodes]
   ];
   metrics.replaceChildren(); nodes.forEach(([label, value]) => { const card = node('article', 'history-metric'); card.append(node('span', '', label), node('strong', '', valueText(value))); metrics.append(card); }); view.append(metrics);
   const chart = node('div', 'history-chart'); historicalChart(chart, history); view.append(chart);
@@ -286,7 +365,7 @@ export function renderFritzboxHistory(view, records) {
   section(view, 'WAN-/DSL-Status und gemeldete Fehler', 'Durchsatzwerte sind Messwerte; Anschlussraten werden getrennt ausgewiesen.'); view.append(table(['Zeit', 'WAN', 'Download gemessen', 'Upload gemessen', 'Anschluss Downstream', 'Anschluss Upstream', 'DSL', 'Fehler'], rows));
   const dslKeys = [...new Set(history.flatMap((record) => Object.keys(record.dsl && typeof record.dsl === 'object' ? record.dsl : {}).filter((key) => !sensitiveKey.test(key))))];
   section(view, 'Gespeicherte DSL-Felder', 'Feldbezeichnungen werden lesbar dargestellt; sensible Felder werden ausgelassen.');
-  if (dslKeys.length) { const dslRows = history.slice().reverse().map((record) => [new Date(record.at).toLocaleString('de-DE'), ...dslKeys.map((key) => valueText(record.dsl?.[key]))]); view.append(table(['Zeit', ...dslKeys.map(humanLabel)], dslRows)); } else view.append(node('div', 'history-empty', 'Keine DSL-Felder gespeichert.'));
+  if (dslKeys.length) { const dslRows = fullSnapshots.slice().reverse().map((record) => [new Date(record.at).toLocaleString('de-DE'), ...dslKeys.map((key) => valueText(record.dsl?.[key]))]); view.append(table(['Zeit', ...dslKeys.map(humanLabel)], dslRows)); } else view.append(node('div', 'history-empty', 'Keine DSL-Felder gespeichert.'));
   const transitions = []; let previous = null;
   history.forEach((record) => { const status = record.wan?.status; if (status == null || status === '') return; if (previous && String(previous.status) !== String(status)) transitions.push([new Date(record.at).toLocaleString('de-DE'), previous.status, status]); previous = { status }; });
   section(view, 'Beobachtete WAN-Statuswechsel', 'Unbekannte oder fehlende Statuswerte werden nicht als Abbruch gewertet.');

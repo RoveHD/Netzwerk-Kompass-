@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diagnose, PING_WARNING_MS, summarize, subnetHosts, trafficRate, validateHost } from '../lib/analysis.js';
+import { diagnose, isLatencySpike, PING_SPIKE_MS, PING_WARNING_MS, summarize, subnetHosts, trafficRate, validateHost } from '../lib/analysis.js';
 
 test('PC diagnosis uses only the selected repeater, and has no implicit fallback',()=>{
   const target=(host,kind,status)=>({host,label:host,kind,enabled:true,stats:{sent:10,status}});
@@ -53,8 +53,8 @@ test('local measurement failures are not network loss and missing values are nul
 test('critical latency has separate local and internet thresholds',()=>{
   const samples=ms=>Array.from({length:30},()=>({ok:true,ms,status:'Success'}));
   for(const kind of ['gateway','device','repeater']) {
-    assert.equal(summarize(samples(30),kind).status,'ok');
-    assert.equal(summarize(samples(31),kind).status,'warning');
+    assert.equal(summarize(samples(50),kind).status,'ok');
+    assert.equal(summarize(samples(51),kind).status,'warning');
     assert.equal(summarize(samples(99),kind).status,'warning');
     assert.equal(summarize(samples(100),kind).status,'critical');
   }
@@ -66,16 +66,26 @@ test('critical latency has separate local and internet thresholds',()=>{
   }
 });
 
-test('up to 30 ms is normal for every target, while packet loss still warns',()=>{
+test('up to 50 ms is normal for every target, while packet loss still warns',()=>{
   const samples=ms=>Array.from({length:30},()=>({ok:true,ms,status:'Success'}));
-  assert.equal(PING_WARNING_MS,30);
+  assert.equal(PING_WARNING_MS,50);
   for(const kind of ['gateway','device','repeater','internet','custom']) {
-    assert.equal(summarize(samples(30),kind).status,'ok');
-    assert.equal(summarize(samples(31),kind).status,'warning');
+    assert.equal(summarize(samples(50),kind).status,'ok');
+    assert.equal(summarize(samples(51),kind).status,'warning');
   }
   const withLoss=samples(20);withLoss[0]={ok:false,ms:null,status:'TimedOut'};
   assert.equal(summarize(withLoss,'internet').recentAvgMs,20);
   assert.equal(summarize(withLoss,'internet').status,'warning');
+});
+
+test('Lag spikes begin at exactly 100 ms, separately from average warnings and missing replies',()=>{
+  assert.equal(PING_SPIKE_MS,100);
+  for(const ms of [0,50,51,99,99.99])assert.equal(isLatencySpike({ok:true,ms,status:'Success'}),false);
+  for(const ms of [100,100.01,430])assert.equal(isLatencySpike({ok:true,ms,status:'Success'}),true);
+  for(const sample of [null,{ok:false,ms:300,status:'TimedOut'},{ok:true,ms:300,status:'measurement_error'},
+    {ok:true,ms:300,error:'invalid measurement'},{ok:true,ms:Infinity},{ok:true,ms:NaN},{ok:true,ms:'100'}])assert.equal(isLatencySpike(sample),false);
+  assert.equal(summarize(Array(30).fill({ok:true,ms:70,status:'Success'}),'internet').status,'warning');
+  assert.equal(isLatencySpike({ok:true,ms:70,status:'Success'}),false);
 });
 
 test('critical loss uses the recent window, recovers and preserves down and measurement errors',()=>{
@@ -123,12 +133,12 @@ test('low-latency warnings name packet loss without implying an elevated ping',(
 
 test('combined repeater and router diagnosis labels localized measurements per device',()=>{
   const target=(host,label,kind,stats)=>({host,label,kind,enabled:true,stats});
-  const repeater=target('192.168.1.2','Repeater','repeater',{sent:30,status:'warning',recentAvgMs:42,recentLossPercent:0});
-  const router=target('192.168.1.1','Router / Gateway','gateway',{sent:30,status:'warning',recentAvgMs:38,recentLossPercent:0});
+  const repeater=target('192.168.1.2','Repeater','repeater',{sent:30,status:'warning',recentAvgMs:52,recentLossPercent:0});
+  const router=target('192.168.1.1','Router / Gateway','gateway',{sent:30,status:'warning',recentAvgMs:58,recentLossPercent:0});
   const state={monitoring:true,repeaterHost:repeater.host,targets:[router,repeater],network:{wifi:{}},speedTest:{running:false}};
   const card=diagnose(state).find(item=>item.title==='Schon Repeater und Router gleichzeitig auffällig');
-  assert.ok(card.detail.startsWith('Repeater: Ping erhöht (Ø 42 ms, 0 % Verlust). Router: Ping erhöht (Ø 38 ms, 0 % Verlust).'));
-  assert.ok(!card.detail.includes('bis einschließlich 30 ms'));
+  assert.ok(card.detail.startsWith('Repeater: Ping erhöht (Ø 52 ms, 0 % Verlust). Router: Ping erhöht (Ø 58 ms, 0 % Verlust).'));
+  assert.ok(!card.detail.includes('bis einschließlich 50 ms'));
 });
 
 test('traffic counter reset and interface baseline do not create false peaks',()=>{

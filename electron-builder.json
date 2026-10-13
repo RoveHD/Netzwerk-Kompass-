@@ -7,12 +7,12 @@
   "npmRebuild": false,
   "directories": { "output": "release" },
   "files": [
-    "package.json", "server.js", "README.md",
+    "package.json", "server.js", "README.md", "docs/ursachenanalyse.md",
     "desktop/*.cjs", "lib/*.js",
     "public/*.js", "public/*.css", "public/index.html",
     "public/brand/*.png", "public/brand/*.ico", "public/brand/README.md",
     "public/fonts/*.woff2", "public/fonts/*.txt", "public/fonts/README.md",
-    "scripts/probe.ps1", "scripts/games.ps1", "scripts/game-packets.ps1",
+    "scripts/probe.ps1", "scripts/games.ps1", "scripts/game-packets.ps1", "scripts/secret-store.ps1",
     "scripts/game-packets.cs", "scripts/lag-hotkey.ps1", "scripts/lag-hotkey.cs"
   ],
   "extraResources": [

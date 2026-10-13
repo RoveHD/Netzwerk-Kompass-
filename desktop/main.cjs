@@ -4,6 +4,7 @@ const path = require('node:path');
 const net = require('node:net');
 const { HELP_URL, HELP_CHANNEL, configuration, isAppNavigation, isAppResource, isExportDownload, isHelpUrl, controlPipePath, attachLauncher } = require('./policy.cjs');
 const { GET_CHANNEL, SET_CHANNEL, CAPTURE_CHANNEL, MARK_EVENT, SELECT_EVENT, STATUS_EVENT, createLagHotkey } = require('./lag-hotkey.cjs');
+const backgroundApi = require('./background.cjs');
 
 function configurePersistence(desktopDir) {
   app.setName('Netzwerk-Kompass');
@@ -15,7 +16,7 @@ function configurePersistence(desktopDir) {
   app.commandLine.appendSwitch('disk-cache-dir', path.join(desktopDir, 'session', 'Cache'));
 }
 
-function startDesktop({ managed = false, persistenceConfigured = false, onShutdown = () => app.quit(), onFatal = error => app.exit(1), onReady = () => {} } = {}) {
+function startDesktop({ managed = false, persistenceConfigured = false, backgroundMonitoring = null, onShutdown = () => app.quit(), onFatal = error => app.exit(1), onReady = () => {} } = {}) {
 let window = null;
 let stopping = false;
 let failed = false;
@@ -24,6 +25,8 @@ let control = null;
 let controlConnected = false;
 let detachLauncher = () => {};
 let lagHotkey = null;
+let background = backgroundMonitoring;
+let desktopConfig = null;
 
 function fail(error) {
   if (stopping || failed) return;
@@ -40,6 +43,7 @@ function fail(error) {
 function shutdown() {
   if (stopping) return;
   stopping = true;
+  background?.stop();
   if (managed) onShutdown();
   else app.quit();
 }
@@ -49,15 +53,33 @@ function showWindow() {
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
+  background?.onShow();
 }
 
-app.on('before-quit', () => { stopping = true; detachLauncher(); lagHotkey?.close(); });
+app.on('before-quit', () => { stopping = true; background?.stop(); detachLauncher(); lagHotkey?.close(); });
 app.on('window-all-closed', shutdown);
 process.on('uncaughtException', fail);
 process.on('unhandledRejection', fail);
 
 try {
   const config = configuration();
+  desktopConfig = config;
+  if (!background) background = backgroundApi.createBackgroundMonitoring({ desktopDir: config.desktopDir,
+    available: !managed && Boolean(process.env.NETZWERK_KOMPASS_CONTROL_PIPE),
+    restartSupported: !managed && process.env.NETZWERK_KOMPASS_BACKGROUND_RESTART === '1',
+    runtimeStatus: () => {
+      try {
+        const value = JSON.parse(fs.readFileSync(path.join(config.desktopDir, 'background-runtime.json'), 'utf8'));
+        if (['starting', 'running', 'restarting', 'failed'].includes(value.state) && Number.isInteger(value.restarts) && value.restarts >= 0 && value.restarts <= 3) {
+          const timestamp = item => typeof item === 'string' && item.length <= 40 && Number.isFinite(Date.parse(item)) ? item : null;
+          return { running: value.running === true, state: value.state, restarts: value.restarts, maxRestarts: 3,
+            lastGap: value.lastGap && timestamp(value.lastGap.startedAt) ? {
+              startedAt: timestamp(value.lastGap.startedAt), resumedAt: timestamp(value.lastGap.resumedAt), reason: 'node_exit'
+            } : null };
+        }
+      } catch {}
+      return { running: ready && !stopping, state: ready ? 'running' : 'starting' };
+    } });
   // Set every Chromium persistence path before Electron creates a session.
   if (!persistenceConfigured) configurePersistence(config.desktopDir);
   // Windows GUI processes can lose redirected standard handles while attaching
@@ -94,7 +116,8 @@ try {
       webPreferences: {
         sandbox: true, contextIsolation: true, nodeIntegration: false,
         webSecurity: true, devTools: false, webviewTag: false,
-        preload: path.join(__dirname, 'preload.cjs')
+        preload: path.join(__dirname, 'preload.cjs'),
+        backgroundThrottling: !background.enabled
       }
     });
     window.removeMenu();
@@ -136,7 +159,7 @@ try {
     contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
       if (isMainFrame && (code !== -3 || !ready)) fail(new Error(`App konnte nicht geladen werden: ${description} (${code})`));
     });
-    contents.once('did-finish-load', () => {
+    contents.on('did-finish-load', () => {
       if (!stopping && !failed) {
         ready = true;
         process.stdout.write('DESKTOP_READY\n');
@@ -151,6 +174,19 @@ try {
     });
     const trustedMainFrame = event => !stopping && window && !window.isDestroyed() && event.sender === contents &&
       event.senderFrame === contents.mainFrame && isAppNavigation(event.senderFrame.url, config.origin);
+    const sendBackgroundStatus = () => {
+      if (trustedMainFrame({ sender: contents, senderFrame: contents.mainFrame })) contents.send(backgroundApi.STATUS_EVENT, background.status());
+    };
+    window.on('show', sendBackgroundStatus);
+    window.on('hide', sendBackgroundStatus);
+    ipcMain.handle(backgroundApi.GET_CHANNEL, event => trustedMainFrame(event) ? background.status() : { available: false, error: 'Anfrage nicht erlaubt.' });
+    ipcMain.handle(backgroundApi.SET_CHANNEL, async (event, value) => {
+      if (!trustedMainFrame(event)) return { available: false, error: 'Anfrage nicht erlaubt.' };
+      const result = await background.set(value);
+      if (!stopping && !contents.isDestroyed()) contents.setBackgroundThrottling(!result.enabled);
+      return result;
+    });
+    ipcMain.handle(backgroundApi.QUIT_CHANNEL, event => { if (trustedMainFrame(event)) shutdown(); });
     ipcMain.handle(GET_CHANNEL, event => trustedMainFrame(event) ? lagHotkey.get() : { accelerator: '', registered: false, error: 'Anfrage nicht erlaubt.' });
     ipcMain.handle(SET_CHANNEL, (event, accelerator) => {
       if (!trustedMainFrame(event)) return { accelerator: '', registered: false, error: 'Anfrage nicht erlaubt.' };
@@ -160,10 +196,12 @@ try {
       if (!trustedMainFrame(event)) return { capturing: false, error: 'Anfrage nicht erlaubt.' };
       return lagHotkey.capture(active);
     });
-    if (managed) {
-      window.on('close', event => { if (!stopping) { event.preventDefault(); onShutdown(); } });
-      window.on('query-session-end', () => onShutdown(true));
-    }
+    window.on('close', event => {
+      if (stopping) return;
+      if (background.onClose(event, window)) { sendBackgroundStatus(); return; }
+      if (managed) { event.preventDefault(); shutdown(); }
+    });
+    window.on('query-session-end', () => { background.stop(); if (managed) onShutdown(true); else shutdown(); });
     window.on('closed', () => { window = null; shutdown(); });
     await window.loadURL(config.startUrl);
   }).catch(fail);
@@ -171,7 +209,17 @@ try {
 
   return {
     show: showWindow,
-    stop() { stopping = true; detachLauncher(); lagHotkey?.close(); },
+    stop() { stopping = true; background?.stop(); detachLauncher(); lagHotkey?.close(); },
+    notifyBackground() {
+      if (window && !window.isDestroyed() && ready) window.webContents.send(backgroundApi.STATUS_EVENT, background.status());
+    },
+    async reconnect(url) {
+      if (stopping || !window || window.isDestroyed()) return;
+      const config = configuration({ ...process.env, NETZWERK_KOMPASS_URL: url });
+      Object.assign(desktopConfig, config);
+      ready = false;
+      await window.loadURL(config.startUrl);
+    },
     get window() { return window; }
   };
 }
